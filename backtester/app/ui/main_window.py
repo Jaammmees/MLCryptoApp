@@ -3,7 +3,7 @@ from tkinter import *
 from PIL import Image, ImageTk
 from tkinter import filedialog
 import os
-from trading.historical import run_backtest_and_save_report
+#from trading.historical import run_backtest_and_save_report
 import tkinterweb
 import threading
 
@@ -27,7 +27,7 @@ class MainWindow(ctk.CTk):
         self.sidebar.pack(side="left", fill="y", expand=False)
 
         #initialise mainframe
-        self.main_frame = ctk.CTkFrame(self, corner_radius=0, fg_color=("#EDEDED", "#4B4B4B"))
+        self.main_frame = ctk.CTkScrollableFrame(self, corner_radius=0, fg_color=("#EDEDED", "#4B4B4B"))
         #customise
         self.main_frame.pack(side="right", expand=True, fill="both")
         
@@ -35,6 +35,7 @@ class MainWindow(ctk.CTk):
         self.navbar_font = ctk.CTkFont(family = "Helvetica", size = 12, weight = "bold")
         self.title_font = ctk.CTkFont(family = "Helvetica", size = 40, weight = "bold")
         self.button_font = ctk.CTkFont(family = "Helvetica", size = 15, weight = "bold")
+        self.combo_box_font = ctk.CTkFont(family = "Helvetica", size = 20, weight = "bold")
 
         self.setup_sidebar()
 
@@ -51,27 +52,37 @@ class MainWindow(ctk.CTk):
         chart_image = Image.open("./images/line-chart-svgrepo-com.png")
         dollar_image = Image.open("./images/dollar-sign-svgrepo-com.png")
         settings_image = Image.open("./images/settings-svgrepo-com.png")
+        data_image = Image.open("./images/data-svgrepo-com.png")
+        build_image = Image.open("./images/build-svgrepo-com.png")
         self.backtestImage = ctk.CTkImage(dark_image = chart_image, size=(50,50))
         self.realTimeImage = ctk.CTkImage(dark_image = dollar_image, size=(50,50))
         self.settingsImage = ctk.CTkImage(dark_image = settings_image, size=(50,50))
+        self.dataImage = ctk.CTkImage(dark_image = data_image, size=(50,50))
+        self.buildImage = ctk.CTkImage(dark_image = build_image, size=(50,50))
         
         #buttons
         button_backtest = ctk.CTkButton(self.sidebar, text="Backtest", font=self.navbar_font, compound=BOTTOM, command=self.load_historical, image=self.backtestImage, width=60,height=60)
         button_realtime = ctk.CTkButton(self.sidebar, text="Real-Time", font=self.navbar_font, compound=BOTTOM, command=self.load_realtime, image=self.realTimeImage, width=60,height=60)
+        button_build = ctk.CTkButton(self.sidebar, text="Build Model", font=self.navbar_font, compound=BOTTOM, command=self.load_build_model, image=self.buildImage, width=60,height=60)
+        button_data = ctk.CTkButton(self.sidebar, text="Process Data", font=self.navbar_font, compound=BOTTOM, command=self.load_process_data, image=self.dataImage, width=60,height=60)
         button_setting = ctk.CTkButton(self.sidebar, text="Settings", font=self.navbar_font, compound=BOTTOM, command=self.load_settings, image=self.settingsImage, width=60,height=60)
         
         #grid positioning
         button_backtest.grid(row=1, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
         button_realtime.grid(row=2, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
-        button_setting.grid(row=3, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
+        button_build.grid(row=3, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
+        button_data.grid(row=4, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
+        button_setting.grid(row=5, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
 
         self.sidebar.grid_columnconfigure(0, weight=1)  # Make column 0 take up all available space
         self.sidebar.grid_rowconfigure(0, weight=1)  # Spacer row at the top
         self.sidebar.grid_rowconfigure(1, weight=0)  # Actual button row
         self.sidebar.grid_rowconfigure(2, weight=0)  # Actual button row
         self.sidebar.grid_rowconfigure(3, weight=0)  # Spacer row at the bottom
-        self.sidebar.grid_rowconfigure(4, weight=1)  # Spacer row at the bottom
-        self.sidebar.grid_rowconfigure(5, weight=1)  # Spacer row at the bottom
+        self.sidebar.grid_rowconfigure(4, weight=0)  # Spacer row at the bottom
+        self.sidebar.grid_rowconfigure(5, weight=0)  # Spacer row at the bottom
+        self.sidebar.grid_rowconfigure(6, weight=1)  # Spacer row at the bottom
+
 
 
     def load_historical(self):
@@ -135,35 +146,35 @@ class MainWindow(ctk.CTk):
         
         #all backtesting functions
 
-        def backtest_button_callback():
-            # Load data and create strategy instance here, or ensure they are accessible
-            data = EURUSD.copy()
+        # def backtest_button_callback():
+        #     # Load data and create strategy instance here, or ensure they are accessible
+        #     data = EURUSD.copy()
             
-            # Run backtest in a separate thread to avoid freezing the GUI
-            thread = threading.Thread(target=lambda: run_backtest_and_update_gui(data))
-            thread.start()
+        #     # Run backtest in a separate thread to avoid freezing the GUI
+        #     thread = threading.Thread(target=lambda: run_backtest_and_update_gui(data))
+        #     thread.start()
 
-        def run_backtest_and_update_gui(data):
-            results, report_path = run_backtest_and_save_report(data)
-            display_backtest_results(backtest_result_frame, report_path, results)
+        # def run_backtest_and_update_gui(data):
+        #     results, report_path = run_backtest_and_save_report(data)
+        #     display_backtest_results(backtest_result_frame, report_path, results)
         
-        def display_backtest_results(master, html_file, results):
-            # Clear previous results if necessary
-            for widget in master.winfo_children():
-                widget.destroy()
+        # def display_backtest_results(master, html_file, results):
+        #     # Clear previous results if necessary
+        #     for widget in master.winfo_children():
+        #         widget.destroy()
 
-            # Frame for the web view
-            web_frame = ctk.CTkFrame(master)
-            web_frame.pack(fill='both', expand=True)
+        #     # Frame for the web view
+        #     web_frame = ctk.CTkFrame(master)
+        #     web_frame.pack(fill='both', expand=True)
 
-            # Display the HTML report
-            html_view = tkinterweb.HtmlFrame(web_frame, horizontal_scrollbar="auto")
-            html_view.load_file(html_file)  # Ensure html_file is the correct, full path
-            html_view.pack(fill='both', expand=True)
+        #     # Display the HTML report
+        #     html_view = tkinterweb.HtmlFrame(web_frame, horizontal_scrollbar="auto")
+        #     html_view.load_file(html_file)  # Ensure html_file is the correct, full path
+        #     html_view.pack(fill='both', expand=True)
 
-            # Optionally display the results in a text widget or labels
-            results_text = ctk.CTkLabel(master, text=str(results))
-            results_text.pack(pady=20)
+        #     # Optionally display the results in a text widget or labels
+        #     results_text = ctk.CTkLabel(master, text=str(results))
+        #     results_text.pack(pady=20)
 
 
         #-----------------------------------------------------------------------
@@ -173,8 +184,8 @@ class MainWindow(ctk.CTk):
         backtest_button_frame.pack(pady=20, side=TOP, fill = X, padx = 20)
 
         #have a button that hits backtest, which calls the backtest function, which will return a html and we will embed that,
-
-        backtest_button = ctk.CTkButton(backtest_button_frame, text="Run Backtest", font=self.button_font, command=backtest_button_callback)
+                                                                                                        #comamnd missing here
+        backtest_button = ctk.CTkButton(backtest_button_frame, text="Run Backtest", font=self.button_font)
         backtest_button.grid(row=0, column=0, padx=15, pady=15)
 
 
@@ -183,18 +194,128 @@ class MainWindow(ctk.CTk):
         backtest_result_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
         backtest_result_frame.pack(pady=10, side=TOP, fill = BOTH, padx = 20)
 
-        # Create a frame for the web view
-        web_frame = ctk.CTkFrame(backtest_result_frame)
-        web_frame.pack(fill='both', expand=True)
 
-        # Setup the HTML viewer within the frame
-        html_file_path = "C:/Users/LimJ/Documents/GitHub/MLCrypto/backtester/app/backtest_report.html"
-        self.html_view = tkinterweb.HtmlFrame(web_frame, horizontal_scrollbar="auto")
-        self.html_view.load_file(html_file_path)
-        self.html_view.pack(fill='both', expand=True)
+    def load_build_model(self):
+        #wipe previous frame
+        for widget in self.main_frame.winfo_children():
+            widget.destroy()
 
+        #internal functions
+        #updates layers
+        def update_layer_widgets(self, num_layers):
+            # Clear existing widgets
+            for widget in self.building_layers_frame.winfo_children():
+                widget.destroy()
 
+            for i in range(num_layers):
+                layer_label = ctk.CTkLabel(self.building_layers_frame, text=f"Layer {i + 1}:")
+                layer_label.grid(row=i, column=0, padx=15, pady=15)
 
+                layer_type_combo = ctk.CTkComboBox(self.building_layers_frame, values=["LSTM", "Dense", "Dropout"])
+                layer_type_combo.grid(row=i, column=1, padx=15, pady=15)
+
+                layer_param_entry = ctk.CTkEntry(self.building_layers_frame)
+                layer_param_entry.grid(row=i, column=2, padx=15, pady=15)
+
+        #slider
+        def slider_value(value):
+            int_value = int(value)
+            select_layers_value.configure(text=f"{int_value}")
+            update_layer_widgets(self,int_value)
+            
+        
+        #title
+        build_model_title = ctk.CTkLabel(self.main_frame, text="Build Model", font=self.title_font, text_color="#353535")
+        build_model_title.pack(pady=20,padx=25, side=TOP, anchor = "w")
+
+        #select model frame
+        select_model_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
+        select_model_frame.pack(pady=15, side=TOP, fill = X, padx = 20)
+
+        # Model Type Selection: Dropdown to choose between different types of models (e.g., LSTM, CNN).
+        select_model_combo = ctk.CTkComboBox(select_model_frame, values = ["LSTM", "CNN", "RNN"], height = 50, width = 150, font=self.combo_box_font)
+        select_model_combo.grid(row=0,column=0, padx=15,pady=15, ipadx=30)
+        #choose how many layers wanted
+        select_layers_text = ctk.CTkLabel(select_model_frame, text="Model Layers")
+        select_layers_text.grid(row=0,column=1,padx=15,pady=15)
+
+        #slider
+        select_layers = ctk.CTkSlider(select_model_frame, from_= 1, to = 10, number_of_steps=10, command=slider_value)
+        select_layers.set(1)
+        select_layers.grid(row=0,column=2, padx=15,pady=15, ipadx=30)
+        select_layers_value = ctk.CTkLabel(select_model_frame, text="1")
+        select_layers_value.grid(row=0,column=3,padx=15,pady=15)
+
+        #choosing layers and their values
+        #building layers frame
+        self.building_layers_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
+        self.building_layers_frame.pack(pady=15, side=TOP, fill = X, padx = 20)
+
+        update_layer_widgets(self,1)
+
+        # Hyperparameters:
+        parameters_title = ctk.CTkLabel(self.main_frame, text = "Hyperparameter Configuration", font = self.combo_box_font, text_color="#353535")
+        parameters_title.pack(padx=15,pady=15, side=TOP, anchor = "w")
+        # Dropdowns for activation functions and optimizer choices.
+        select_parameters_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
+        select_parameters_frame.pack(pady=15, side=TOP, fill = X, padx = 20)
+        
+        # Entries for learning rate, epochs, batch size, and sequence length (specifically important for LSTM models).
+        # Learning Rate
+        learning_rate_label = ctk.CTkLabel(select_parameters_frame, text="Learning Rate:")
+        learning_rate_label.grid(row=1, column=0, padx=15, pady=15)
+        learning_rate_entry = ctk.CTkEntry(select_parameters_frame)
+        learning_rate_entry.grid(row=1, column=1, padx=15, pady=15)
+        # Epochs
+        epochs_label = ctk.CTkLabel(select_parameters_frame, text="Epochs:")
+        epochs_label.grid(row=2, column=0, padx=15, pady=15)
+        epochs_entry = ctk.CTkEntry(select_parameters_frame)
+        epochs_entry.grid(row=2, column=1, padx=15, pady=15)
+        # Batch Size
+        batch_size_label = ctk.CTkLabel(select_parameters_frame, text="Batch Size:")
+        batch_size_label.grid(row=3, column=0, padx=15, pady=15)
+        batch_size_entry = ctk.CTkEntry(select_parameters_frame)
+        batch_size_entry.grid(row=3, column=1, padx=15, pady=15)
+        # Sequence Length In
+        sequence_length_in_label = ctk.CTkLabel(select_parameters_frame, text="Sequence Length In:")
+        sequence_length_in_label.grid(row=4, column=0, padx=15, pady=15)
+        sequence_length_in_entry = ctk.CTkEntry(select_parameters_frame)
+        sequence_length_in_entry.grid(row=4, column=1, padx=15, pady=15)
+        # Sequence Length Out
+        sequence_length_out_label = ctk.CTkLabel(select_parameters_frame, text="Sequence Length Out:")
+        sequence_length_out_label.grid(row=5, column=0, padx=15, pady=15)
+        sequence_length_out_entry = ctk.CTkEntry(select_parameters_frame)
+        sequence_length_out_entry.grid(row=5, column=1, padx=15, pady=15)
+
+        # Submission: Button to confirm the setup and proceed to data preparation.
+        model_build_button_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
+        model_build_button_frame.pack(pady=20, side=TOP, fill = X, padx = 20)
+
+        #have a button that hits backtest, which calls the backtest function, which will return a html and we will embed that,
+                                                                                                        #comamnd missing here
+        model_build_button = ctk.CTkButton(model_build_button_frame, text="Build Model", font=self.button_font)
+        model_build_button.grid(row=0, column=0, padx=15, pady=15)
+
+    def load_process_data(self):
+        #wipe previous frame
+        for widget in self.main_frame.winfo_children():
+            widget.destroy()
+
+        label = ctk.CTkLabel(self.main_frame, text = "process data")
+        label.pack(pady=20)
+
+        #Data Upload:
+        # Button to upload dataset files.
+        # Display of uploaded file paths to confirm the data is loaded.
+        # Feature Engineering:
+        # Checkboxes to select standard and optional features (e.g., price, volume, RSI, MACD).
+        # Entries to specify parameters for computing technical indicators.
+        # Data Scaling/Normalization:
+        # Radio buttons to choose between scaling methods (e.g., Min-Max Scaling, Standard Scaling).
+        # Sequence Preparation:
+        # Entry for specifying sequence length, crucial for LSTM models.
+        # Button to trigger the sequence creation process, using the sequence length and selected features.
+        # Display of sample sequences to verify correct formation.
 
     def load_realtime(self):
         #wipe previous frame
