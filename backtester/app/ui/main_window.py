@@ -6,6 +6,8 @@ import os
 #from trading.historical import run_backtest_and_save_report
 import tkinterweb
 import threading
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dropout, Dense
 
 
 from backtesting.test import EURUSD
@@ -194,6 +196,20 @@ class MainWindow(ctk.CTk):
         backtest_result_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
         backtest_result_frame.pack(pady=10, side=TOP, fill = BOTH, padx = 20)
 
+        #in relation to building the model
+    def update_layer_type(self, value, index):
+        # Update the layer type at specific index
+        #print(value)
+        self.layer_widgets[index]['type'] = value
+        #print(self.layer_widgets)
+
+        #in relation to building the model
+    def update_layer_param(self, event, index):
+        entry_widget = event.widget
+        current_text = entry_widget.get()  # This gets the current text from the entry
+        #print(current_text)
+        self.layer_widgets[index]['params'] = float(current_text)
+        #print(self.layer_widgets)
 
     def load_build_model(self):
         #wipe previous frame
@@ -202,28 +218,81 @@ class MainWindow(ctk.CTk):
 
         #internal functions
         #updates layers
+
         def update_layer_widgets(self, num_layers):
             # Clear existing widgets
             for widget in self.building_layers_frame.winfo_children():
                 widget.destroy()
 
+            self.layer_widgets = []
             for i in range(num_layers):
                 layer_label = ctk.CTkLabel(self.building_layers_frame, text=f"Layer {i + 1}:")
                 layer_label.grid(row=i, column=0, padx=15, pady=15)
-
+                
                 layer_type_combo = ctk.CTkComboBox(self.building_layers_frame, values=["LSTM", "Dense", "Dropout"])
                 layer_type_combo.grid(row=i, column=1, padx=15, pady=15)
 
                 layer_param_entry = ctk.CTkEntry(self.building_layers_frame)
                 layer_param_entry.grid(row=i, column=2, padx=15, pady=15)
+                
+                self.layer_widgets.append({'type': layer_type_combo.get(), 'params': layer_param_entry})
+
+                # Set callback to update the type in the list when changed
+                layer_type_combo.configure(command=lambda value, idx=i: self.update_layer_type(value, idx))
+                layer_param_entry.bind('<KeyRelease>', lambda event, idx=i: self.update_layer_param(event, idx))
 
         #slider
         def slider_value(value):
             int_value = int(value)
             select_layers_value.configure(text=f"{int_value}")
             update_layer_widgets(self,int_value)
-            
+
+        #build model
+        def build_model(layer_info, input_shape):
+            model = Sequential()
+            print(layer_info, input_shape)
+            for info in layer_info:
+                layer_type = info['type']
+                if layer_type == 'LSTM':
+                    model.add(LSTM(info['params'], return_sequences=True, input_shape=input_shape))
+                elif layer_type == 'Dropout':
+                    model.add(Dropout(info['params']))
+                elif layer_type == 'Dense':
+                    model.add(Dense(info['params']))
+
+            return model
         
+        def collect_model_details():
+            layer_details = []
+            #print(self.layer_widgets)
+            for layer_info in self.layer_widgets:
+                #print(layer_info['type'], layer_info['params'])
+                layer_type = layer_info['type']
+                layer_params = layer_info['params']
+                layer_details.append({'type': layer_type, 'params': float(layer_params)})
+
+            hyperparameters = {
+                'learning_rate': learning_rate_entry.get(),
+                'epochs': epochs_entry.get(),
+                'batch_size': batch_size_entry.get(),
+                'sequence_length_in': sequence_length_in_entry.get(),
+                'sequence_length_out': sequence_length_out_entry.get(),
+                'optimiser' : optimiser_entry.get(),
+                'loss' : loss_function_entry.get(),
+                'model name' : model_name_entry.get()
+            }
+
+            return layer_details, hyperparameters
+        
+        def build_and_save_model():
+            layer_info, hyper_params = collect_model_details()
+            # Assume input_shape is derived from 'sequence_length_in' and 'sequence_length_out'
+            input_shape = (int(hyper_params['sequence_length_in']), int(hyper_params['sequence_length_out']))
+            print(layer_info, hyper_params, input_shape)
+            model = build_model(layer_info, input_shape)
+            model.compile(optimizer=hyper_params['optimiser'], loss=hyper_params['loss'])  # Example configuration
+            model.save(hyper_params['model name'] + '.h5')  # Save the model
+
         #title
         build_model_title = ctk.CTkLabel(self.main_frame, text="Build Model", font=self.title_font, text_color="#353535")
         build_model_title.pack(pady=20,padx=25, side=TOP, anchor = "w")
@@ -237,14 +306,20 @@ class MainWindow(ctk.CTk):
         select_model_combo.grid(row=0,column=0, padx=15,pady=15, ipadx=30)
         #choose how many layers wanted
         select_layers_text = ctk.CTkLabel(select_model_frame, text="Model Layers")
-        select_layers_text.grid(row=0,column=1,padx=15,pady=15)
+        select_layers_text.grid(row=0,column=3,padx=15,pady=15)
+
+        # Model Name
+        model_name_label = ctk.CTkLabel(select_model_frame, text="Model Name")
+        model_name_label.grid(row=0, column=1, padx=15, pady=15)
+        model_name_entry = ctk.CTkEntry(select_model_frame)
+        model_name_entry.grid(row=0, column=2, padx=15, pady=15)
 
         #slider
         select_layers = ctk.CTkSlider(select_model_frame, from_= 1, to = 10, number_of_steps=10, command=slider_value)
         select_layers.set(1)
-        select_layers.grid(row=0,column=2, padx=15,pady=15, ipadx=30)
+        select_layers.grid(row=0,column=4, padx=15,pady=15, ipadx=30)
         select_layers_value = ctk.CTkLabel(select_model_frame, text="1")
-        select_layers_value.grid(row=0,column=3,padx=15,pady=15)
+        select_layers_value.grid(row=0,column=5,padx=15,pady=15)
 
         #choosing layers and their values
         #building layers frame
@@ -286,6 +361,16 @@ class MainWindow(ctk.CTk):
         sequence_length_out_label.grid(row=5, column=0, padx=15, pady=15)
         sequence_length_out_entry = ctk.CTkEntry(select_parameters_frame)
         sequence_length_out_entry.grid(row=5, column=1, padx=15, pady=15)
+        # Optimiser
+        optimiser_label = ctk.CTkLabel(select_parameters_frame, text="Optimiser")
+        optimiser_label.grid(row=1, column=2, padx=15, pady=15)
+        optimiser_entry = ctk.CTkEntry(select_parameters_frame)
+        optimiser_entry.grid(row=1, column=3, padx=15, pady=15)
+        # Loss
+        loss_function_label = ctk.CTkLabel(select_parameters_frame, text="Loss Function")
+        loss_function_label.grid(row=2, column=2, padx=15, pady=15)
+        loss_function_entry = ctk.CTkEntry(select_parameters_frame)
+        loss_function_entry.grid(row=2, column=3, padx=15, pady=15)
 
         # Submission: Button to confirm the setup and proceed to data preparation.
         model_build_button_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
@@ -293,7 +378,7 @@ class MainWindow(ctk.CTk):
 
         #have a button that hits backtest, which calls the backtest function, which will return a html and we will embed that,
                                                                                                         #comamnd missing here
-        model_build_button = ctk.CTkButton(model_build_button_frame, text="Build Model", font=self.button_font)
+        model_build_button = ctk.CTkButton(model_build_button_frame, text="Build Model", font=self.button_font, command=lambda: build_and_save_model())
         model_build_button.grid(row=0, column=0, padx=15, pady=15)
 
     def load_process_data(self):
