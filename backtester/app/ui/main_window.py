@@ -7,7 +7,7 @@ import os
 import tkinterweb
 import threading
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dropout, Dense
+from tensorflow.keras.layers import LSTM, Dropout, Dense, Input
 
 
 from backtesting.test import EURUSD
@@ -199,17 +199,21 @@ class MainWindow(ctk.CTk):
         #in relation to building the model
     def update_layer_type(self, value, index):
         # Update the layer type at specific index
-        #print(value)
-        self.layer_widgets[index]['type'] = value
-        #print(self.layer_widgets)
+        self.layer_widgets[index]['type'].set(value)
+
+        # Show or hide the return sequences checkbox based on the layer type
+        if value == 'LSTM':
+            self.layer_widgets[index]['return_seq'].grid()
+        else:
+            self.layer_widgets[index]['return_seq'].grid_remove()
 
         #in relation to building the model
     def update_layer_param(self, event, index):
-        entry_widget = event.widget
-        current_text = entry_widget.get()  # This gets the current text from the entry
-        #print(current_text)
-        self.layer_widgets[index]['params'] = float(current_text)
-        #print(self.layer_widgets)
+            entry_widget = event.widget
+            current_text = entry_widget.get()  # This gets the current text from the entry
+            #print(current_text)
+            self.layer_widgets[index]['params'] = int(current_text)
+            #print(self.layer_widgets)
 
     def load_build_model(self):
         #wipe previous frame
@@ -229,13 +233,21 @@ class MainWindow(ctk.CTk):
                 layer_label = ctk.CTkLabel(self.building_layers_frame, text=f"Layer {i + 1}:")
                 layer_label.grid(row=i, column=0, padx=15, pady=15)
                 
-                layer_type_combo = ctk.CTkComboBox(self.building_layers_frame, values=["LSTM", "Dense", "Dropout"])
+                layer_type_combo = ctk.CTkComboBox(self.building_layers_frame, values=["", "LSTM", "Dense", "Dropout"])
                 layer_type_combo.grid(row=i, column=1, padx=15, pady=15)
 
                 layer_param_entry = ctk.CTkEntry(self.building_layers_frame)
                 layer_param_entry.grid(row=i, column=2, padx=15, pady=15)
+
+                layer_return_seq_chk = ctk.CTkCheckBox(self.building_layers_frame, text="Return Sequences")
+                layer_return_seq_chk.grid(row=i, column=3, padx=15, pady=15)
+                layer_return_seq_chk.grid_remove()  # Hide initially
                 
-                self.layer_widgets.append({'type': layer_type_combo.get(), 'params': layer_param_entry})
+                self.layer_widgets.append({
+                    'type': layer_type_combo, 
+                    'params': layer_param_entry, 
+                    'return_seq': layer_return_seq_chk
+                })
 
                 # Set callback to update the type in the list when changed
                 layer_type_combo.configure(command=lambda value, idx=i: self.update_layer_type(value, idx))
@@ -251,10 +263,11 @@ class MainWindow(ctk.CTk):
         def build_model(layer_info, input_shape):
             model = Sequential()
             print(layer_info, input_shape)
+            model.add(Input(shape=input_shape))
             for info in layer_info:
                 layer_type = info['type']
                 if layer_type == 'LSTM':
-                    model.add(LSTM(info['params'], return_sequences=True, input_shape=input_shape))
+                    model.add(LSTM(info['params'], return_sequences=info['return_sequences']))
                 elif layer_type == 'Dropout':
                     model.add(Dropout(info['params']))
                 elif layer_type == 'Dense':
@@ -266,10 +279,14 @@ class MainWindow(ctk.CTk):
             layer_details = []
             #print(self.layer_widgets)
             for layer_info in self.layer_widgets:
-                #print(layer_info['type'], layer_info['params'])
-                layer_type = layer_info['type']
-                layer_params = layer_info['params']
-                layer_details.append({'type': layer_type, 'params': float(layer_params)})
+                layer_type = layer_info['type'].get()
+                layer_params = int(layer_info['params'])
+                return_seq = layer_info['return_seq'].get() if layer_type == 'LSTM' else False
+                layer_details.append({
+                    'type': layer_type,
+                    'params': layer_params,
+                    'return_sequences': return_seq
+                })
 
             hyperparameters = {
                 'learning_rate': learning_rate_entry.get(),
@@ -364,13 +381,19 @@ class MainWindow(ctk.CTk):
         # Optimiser
         optimiser_label = ctk.CTkLabel(select_parameters_frame, text="Optimiser")
         optimiser_label.grid(row=1, column=2, padx=15, pady=15)
-        optimiser_entry = ctk.CTkEntry(select_parameters_frame)
+        optimiser_options = ['SGD', 'RMSprop', 'Adam', 'Adadelta', 'Adagrad', 'Adamax', 'Nadam', 'Ftrl']
+        optimiser_entry = ctk.CTkComboBox(select_parameters_frame, values=optimiser_options)
         optimiser_entry.grid(row=1, column=3, padx=15, pady=15)
+        optimiser_entry.set("Adam")  # Set default value
         # Loss
         loss_function_label = ctk.CTkLabel(select_parameters_frame, text="Loss Function")
         loss_function_label.grid(row=2, column=2, padx=15, pady=15)
-        loss_function_entry = ctk.CTkEntry(select_parameters_frame)
+        loss_function_options = ['mean_squared_error', 'mean_absolute_error', 'binary_crossentropy', 
+                                 'categorical_crossentropy', 'sparse_categorical_crossentropy', 'poisson', 
+                                 'kullback_leibler_divergence', 'hinge']
+        loss_function_entry = ctk.CTkComboBox(select_parameters_frame, values=loss_function_options)
         loss_function_entry.grid(row=2, column=3, padx=15, pady=15)
+        loss_function_entry.set("mean_squared_error")  # Set default value
 
         # Submission: Button to confirm the setup and proceed to data preparation.
         model_build_button_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
