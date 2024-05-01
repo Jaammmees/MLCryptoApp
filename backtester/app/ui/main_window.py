@@ -6,8 +6,9 @@ import os
 #from trading.historical import run_backtest_and_save_report
 import tkinterweb
 import threading
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import LSTM, Dropout, Dense, Input
+import pandas as pd
 
 
 from backtesting.test import EURUSD
@@ -409,21 +410,146 @@ class MainWindow(ctk.CTk):
         for widget in self.main_frame.winfo_children():
             widget.destroy()
 
-        label = ctk.CTkLabel(self.main_frame, text = "process data")
-        label.pack(pady=20)
+        #internal functions
+        self.columns = {}
+        path_container = {}
+
+        def load_model_file():
+            model_file_path = filedialog.askopenfilename(filetypes=[("HDF5 files", "*.h5")])
+            if model_file_path:
+                #print("Model loaded:", model_file_path)
+                model_indicator.configure(text="Model " + os.path.basename(model_file_path) + " loaded")
+                path_container['model_path'] = model_file_path
+                model = load_model(path_container['model_path'])
+                model_shape.configure(text=f"Shape of Model Input is: {model.input_shape}, \n and Model Output is: {model.output_shape}")
+                model_shape.grid()
+
+        def load_data_file(self):
+            data_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
+            if data_file_path:
+                data_indicator.configure(text="Data " + os.path.basename(data_file_path) + " loaded")
+                try:
+                    if data_file_path.endswith('.csv'):
+                        data = pd.read_csv(data_file_path)
+                    elif data_file_path.endswith('.xlsx'):
+                        data = pd.read_excel(data_file_path)
+                    elif data_file_path.endswith('.parquet'):
+                        data = pd.read_parquet(data_file_path)
+
+                    # Clear previous data in the frame
+                    for widget in columns_frame.winfo_children():
+                        widget.destroy()
+
+                    for widget in self.column_list_frame.winfo_children():
+                        widget.destroy()
+                    
+                    # Create labels for column names and first few rows
+                    for i, column in enumerate(data.columns):
+                        ctk.CTkLabel(columns_frame, text=column, width=20).grid(row=0, column=i)
+                
+                        frame = ctk.CTkFrame(self.column_list_frame, height = 50)
+                        frame.pack(side="left", fill="x", expand=True,padx=10,pady=10)
+
+                        label = ctk.CTkLabel(frame, text=column)
+                        label.pack(side="left", fill="x", expand=True, padx=10)
+
+                        delete_button = ctk.CTkButton(frame, text="X", width=40, height=40, command=lambda c=column: delete_column(self,c))
+                        delete_button.pack(side="right")
+
+                        self.columns[column] = frame
+
+                    for row_index in range(min(5, len(data))):
+                        for col_index, column in enumerate(data.columns):
+                            ctk.CTkLabel(columns_frame, text=str(data.iloc[row_index, col_index]), width=60).grid(row=row_index + 1, column=col_index)
+
+                except Exception as e:
+                    data_indicator.configure(text=f"Failed to load data: {str(e)}")
+
+        def delete_column(self, column):
+            if column in self.columns:
+                self.columns[column].destroy()  # Remove the widget
+                del self.columns[column]  # Remove the reference
+
+        def upload_scaler_prompt(value, frame):
+
+            def load_scaler_file():
+                scaler_file_path = filedialog.askopenfilename(filetypes=[("Pickle files", "*.pkl")])
+                if scaler_file_path:
+                    #print("Scaler loaded:", scaler_file_path)
+                    scaler_indicator.configure(text="Model Scaler " + os.path.basename(scaler_file_path) + " loaded")
+                    path_container['scaler_path'] = scaler_file_path 
+
+            if value == "Upload Scaler":
+                scaler_button = ctk.CTkButton(frame, text="Load Scaler (.pkl)", font=self.button_font, command=load_scaler_file)
+                scaler_button.grid(row=0, column=2,padx=15,pady=15)
+                scaler_indicator = ctk.CTkLabel(frame, text="No Scaler Model Selected")
+                scaler_indicator.grid(row=1,column=2,padx=15,pady=15)
+
+
+        process_data_title = ctk.CTkLabel(self.main_frame, text="Process Data", font=self.title_font, text_color="#353535")
+        process_data_title.pack(pady=20,padx=25, side=TOP, anchor = "w")
 
         #Data Upload:
         # Button to upload dataset files.
         # Display of uploaded file paths to confirm the data is loaded.
-        # Feature Engineering:
-        # Checkboxes to select standard and optional features (e.g., price, volume, RSI, MACD).
-        # Entries to specify parameters for computing technical indicators.
+        # allow for loading of model (to see input and output shape) and allow for loading of data to be processed
+        load_files_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
+        load_files_frame.pack(pady=15, side=TOP, fill = X, padx = 20)
+        load_files_frame.grid_columnconfigure(0, weight=1)  # Less space for model
+        load_files_frame.grid_columnconfigure(2, weight=3)  # More space for data
+
+        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.h5)", font=self.button_font, command=load_model_file)
+        model_indicator = ctk.CTkLabel(load_files_frame, text="No Model Selected")
+        model_button.grid(row=0, column = 0, padx=15, pady=15)
+        model_indicator.grid(row = 1, column = 0, padx=15, pady=15)
+
+        model_shape = ctk.CTkLabel(load_files_frame, text="")
+        model_shape.grid(row=2, column = 0, padx=15,pady=15)
+        model_shape.grid_remove()
+
+        #data
+        data_button = ctk.CTkButton(load_files_frame, text="Load Data (Excel/Parquet)", font=self.button_font, command=lambda: load_data_file(self))
+        data_indicator = ctk.CTkLabel(load_files_frame, text="No Data Selected")
+        data_button.grid(row=0, column = 2, padx=15, pady=15)
+        data_indicator.grid(row = 1, column = 2, padx=15, pady=15)
+
+        columns_frame = ctk.CTkScrollableFrame(load_files_frame, orientation=HORIZONTAL)
+        columns_frame.grid(row=2, column=2, padx=15, pady=15, sticky="ew")
+        columns_frame.grid_columnconfigure(0, weight=1)  # Make the scrollable frame expand
+
+        columns_text = ctk.CTkLabel(columns_frame, text = "")
+        columns_text.grid(row=0,column=0, padx=15,pady=5, sticky='w')
+
+        #feature selection,
+        data_configuration = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        data_configuration.pack(pady=15,side=TOP,fill=X,padx=20)
+
+        #column modification
+        modify_columns_text = ctk.CTkLabel(data_configuration, text = "Current Columns", font=self.button_font)
+        modify_columns_text.pack(padx=15, side='left')
+        self.column_list_frame = ctk.CTkScrollableFrame(data_configuration, corner_radius=10, orientation=HORIZONTAL, height=50)
+        self.column_list_frame.pack(padx=15, pady=15, fill=X)
+
         # Data Scaling/Normalization:
-        # Radio buttons to choose between scaling methods (e.g., Min-Max Scaling, Standard Scaling).
+        normalisation_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        normalisation_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+        # Combobox to choose between scaling methods (e.g., Min-Max Scaling, Standard Scaling).
+        choose_scaler_text = ctk.CTkLabel(normalisation_frame, text="Choose Scaler")
+        choose_scaler_text.grid(row=0,column=0,padx=15,pady=15)
+        # provide option to upload own scaler file too, which will make it pop up the upload scaler button,
+        choose_scaler_combo = ctk.CTkComboBox(normalisation_frame, values=['MinMaxScaler', 'StandardScalar', 'Upload Scaler'], command=lambda value : upload_scaler_prompt(value, normalisation_frame))
+        choose_scaler_combo.grid(row=0,column=1,padx=15,pady=15)
+
         # Sequence Preparation:
-        # Entry for specifying sequence length, crucial for LSTM models.
+        # intake the model shape for the sequence length, crucial for LSTM models.
+        sequence_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        sequence_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+
         # Button to trigger the sequence creation process, using the sequence length and selected features.
         # Display of sample sequences to verify correct formation.
+        
+        # then a button to train the model if required, or to just save the processed data, 
+        
 
     def load_realtime(self):
         #wipe previous frame
