@@ -11,6 +11,8 @@ from tensorflow.keras.layers import LSTM, Dropout, Dense, Input
 import tensorflow as tf
 import pandas as pd
 import numpy as np
+import io
+from contextlib import redirect_stdout
 
 
 from backtesting.test import EURUSD
@@ -21,11 +23,7 @@ class MainWindow(ctk.CTk):
 
         self.title('Machine Learning Backtester')
         self.geometry('1600x900')
-
-        self._set_appearance_mode("light")
-        self._apply_appearance_mode("blue")
         
-
         #initialise sidebar
         self.sidebar = ctk.CTkFrame(self, width=200, corner_radius=0)
         #customise it using .pack
@@ -50,6 +48,39 @@ class MainWindow(ctk.CTk):
 
     def create_widgets(self):
         pass
+
+    def display_model_summary(self, model_path, display_frame):
+        """
+        Loads a .h5 model, captures its summary, and displays it in a provided customtkinter frame.
+        """
+        # Load the model and capture its summary
+        model = load_model(model_path)
+        str_io = io.StringIO()
+
+        with redirect_stdout(str_io):
+            model.summary()
+
+        summary_lines = str_io.getvalue().splitlines()
+
+        # Parse the summary
+        header, rows, footer = self.parse_summary(summary_lines)
+
+        # Clear previous widgets from the frame
+        for widget in display_frame.winfo_children():
+            widget.destroy()
+
+        # Display the new model summary in the frame
+        for line in header + rows + footer:
+            label = ctk.CTkLabel(master=display_frame, text=line, text_color='#FFFFFF', font=self.button_font)
+            label.pack(pady=2, padx=10, anchor="w")
+
+        display_frame.pack(padx=15, pady=15, expand=True, fill='both')
+
+    def parse_summary(self, lines):
+        header = lines[0:4]  # Assuming first 4 lines include the headers and separators
+        rows = lines[4:-5]  # The model layers are listed after the header and before the total params
+        footer = lines[-5:]  # Total params and other details
+        return header, rows, footer
 
     def setup_sidebar(self):
 
@@ -292,9 +323,6 @@ class MainWindow(ctk.CTk):
                 })
 
             hyperparameters = {
-                'learning_rate': learning_rate_entry.get(),
-                'epochs': epochs_entry.get(),
-                'batch_size': batch_size_entry.get(),
                 'sequence_length_in': sequence_length_in_entry.get(),
                 'sequence_length_out': sequence_length_out_entry.get(),
                 'optimiser' : optimiser_entry.get(),
@@ -311,7 +339,10 @@ class MainWindow(ctk.CTk):
             print(layer_info, hyper_params, input_shape)
             model = build_model(layer_info, input_shape)
             model.compile(optimizer=hyper_params['optimiser'], loss=hyper_params['loss'])  # Example configuration
-            model.save(hyper_params['model name'] + '.h5')  # Save the model
+            model.save('models/' + hyper_params['model name'] + '.h5')  # Save the model
+
+            model_path = 'models/' + hyper_params['model name'] + '.h5'
+            self.display_model_summary(model_path, self.model_preview_frame)
 
         #title
         build_model_title = ctk.CTkLabel(self.main_frame, text="Build Model", font=self.title_font, text_color="#353535")
@@ -349,38 +380,26 @@ class MainWindow(ctk.CTk):
         update_layer_widgets(self,1)
 
         # Hyperparameters:
-        parameters_title = ctk.CTkLabel(self.main_frame, text = "Hyperparameter Configuration", font = self.combo_box_font, text_color="#353535")
+        parameters_title = ctk.CTkLabel(self.main_frame, text = "Hyperparameter Configuration & Model Preview", font = self.combo_box_font, text_color="#353535")
         parameters_title.pack(padx=15,pady=15, side=TOP, anchor = "w")
+
+        side_by_side_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        side_by_side_frame.pack(pady=20, side=TOP, fill=X, padx=20)
+
         # Dropdowns for activation functions and optimizer choices.
-        select_parameters_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
-        select_parameters_frame.pack(pady=15, side=TOP, fill = X, padx = 20)
+        select_parameters_frame = ctk.CTkFrame(side_by_side_frame, corner_radius= 10, fg_color='transparent', bg_color='transparent')
+        select_parameters_frame.pack(pady=15, side=LEFT, fill = X, padx = 20)
         
-        # Entries for learning rate, epochs, batch size, and sequence length (specifically important for LSTM models).
-        # Learning Rate
-        learning_rate_label = ctk.CTkLabel(select_parameters_frame, text="Learning Rate:")
-        learning_rate_label.grid(row=1, column=0, padx=15, pady=15)
-        learning_rate_entry = ctk.CTkEntry(select_parameters_frame)
-        learning_rate_entry.grid(row=1, column=1, padx=15, pady=15)
-        # Epochs
-        epochs_label = ctk.CTkLabel(select_parameters_frame, text="Epochs:")
-        epochs_label.grid(row=2, column=0, padx=15, pady=15)
-        epochs_entry = ctk.CTkEntry(select_parameters_frame)
-        epochs_entry.grid(row=2, column=1, padx=15, pady=15)
-        # Batch Size
-        batch_size_label = ctk.CTkLabel(select_parameters_frame, text="Batch Size:")
-        batch_size_label.grid(row=3, column=0, padx=15, pady=15)
-        batch_size_entry = ctk.CTkEntry(select_parameters_frame)
-        batch_size_entry.grid(row=3, column=1, padx=15, pady=15)
         # Sequence Length In
         sequence_length_in_label = ctk.CTkLabel(select_parameters_frame, text="Sequence Length In:")
-        sequence_length_in_label.grid(row=4, column=0, padx=15, pady=15)
+        sequence_length_in_label.grid(row=1, column=0, padx=15, pady=15)
         sequence_length_in_entry = ctk.CTkEntry(select_parameters_frame)
-        sequence_length_in_entry.grid(row=4, column=1, padx=15, pady=15)
+        sequence_length_in_entry.grid(row=1, column=1, padx=15, pady=15)
         # Sequence Length Out
         sequence_length_out_label = ctk.CTkLabel(select_parameters_frame, text="Sequence Length Out:")
-        sequence_length_out_label.grid(row=5, column=0, padx=15, pady=15)
+        sequence_length_out_label.grid(row=2, column=0, padx=15, pady=15)
         sequence_length_out_entry = ctk.CTkEntry(select_parameters_frame)
-        sequence_length_out_entry.grid(row=5, column=1, padx=15, pady=15)
+        sequence_length_out_entry.grid(row=2, column=1, padx=15, pady=15)
         # Optimiser
         optimiser_label = ctk.CTkLabel(select_parameters_frame, text="Optimiser")
         optimiser_label.grid(row=1, column=2, padx=15, pady=15)
@@ -407,6 +426,13 @@ class MainWindow(ctk.CTk):
         model_build_button = ctk.CTkButton(model_build_button_frame, text="Build Model", font=self.button_font, command=lambda: build_and_save_model())
         model_build_button.grid(row=0, column=0, padx=15, pady=15)
 
+        #model preview
+        self.model_preview_frame = ctk.CTkFrame(side_by_side_frame, corner_radius= 10, fg_color='#333333')
+        self.model_preview_frame.pack(pady=20, side=RIGHT, fill = X, padx = 20)
+        self.model_preview_frame.pack_forget() 
+
+
+
     def load_process_data(self):
         #wipe previous frame
         for widget in self.main_frame.winfo_children():
@@ -422,9 +448,7 @@ class MainWindow(ctk.CTk):
                 #print("Model loaded:", model_file_path)
                 model_indicator.configure(text="Model " + os.path.basename(model_file_path) + " loaded")
                 path_container['model_path'] = model_file_path
-                model = load_model(path_container['model_path'])
-                model_shape.configure(text=f"Shape of Model Input is: {model.input_shape}, \n and Model Output is: {model.output_shape}")
-                model_shape.grid()
+                self.display_model_summary(model_file_path, model_preview_frame)
 
         def load_data_file(self):
             data_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
@@ -498,32 +522,36 @@ class MainWindow(ctk.CTk):
         # Button to upload dataset files.
         # Display of uploaded file paths to confirm the data is loaded.
         # allow for loading of model (to see input and output shape) and allow for loading of data to be processed
-        load_files_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
-        load_files_frame.pack(pady=15, side=TOP, fill = X, padx = 20)
-        load_files_frame.grid_columnconfigure(0, weight=1)  # Less space for model
-        load_files_frame.grid_columnconfigure(2, weight=3)  # More space for data
+        # Frame to hold file loading components
+        load_files_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        load_files_frame.pack(pady=15, side='top', fill='x', padx=20)
+        load_files_frame.grid_columnconfigure(0, weight=1)  # Set equal weight if needed
+        load_files_frame.grid_columnconfigure(1, weight=1)  # Set equal weight if needed
 
+        # Button to load a model
         model_button = ctk.CTkButton(load_files_frame, text="Load Model (.h5)", font=self.button_font, command=load_model_file)
-        model_indicator = ctk.CTkLabel(load_files_frame, text="No Model Selected")
-        model_button.grid(row=0, column = 0, padx=15, pady=15)
-        model_indicator.grid(row = 1, column = 0, padx=15, pady=15)
+        model_button.grid(row=0, column=0, padx=15, pady=15, ipadx=20)  # Fill the cell
 
-        model_shape = ctk.CTkLabel(load_files_frame, text="")
-        model_shape.grid(row=2, column = 0, padx=15,pady=15)
-        model_shape.grid_remove()
+        # Indicator label for model loading
+        model_indicator = ctk.CTkLabel(load_files_frame, text="No Model Selected")
+        model_indicator.grid(row=1, column=0, padx=15, pady=15, sticky='nsew')  # Fill the cell
+
+        # Outer frame for model preview (scrollable)
+        model_preview_frame_outer = ctk.CTkFrame(load_files_frame, corner_radius=10)
+        model_preview_frame_outer.grid(row=2, column=0, padx=15, pady=15, sticky='nsew')  # Fill the cell
+
+        # Scrollable frame for model preview
+        model_preview_frame = ctk.CTkScrollableFrame(model_preview_frame_outer, corner_radius=10, fg_color="#353535", orientation=VERTICAL)
+        model_preview_frame.pack(padx=15, pady=15, expand=True, fill='both')  # Fill the outer frame
 
         #data
         data_button = ctk.CTkButton(load_files_frame, text="Load Data (Excel/Parquet)", font=self.button_font, command=lambda: load_data_file(self))
         data_indicator = ctk.CTkLabel(load_files_frame, text="No Data Selected")
-        data_button.grid(row=0, column = 2, padx=15, pady=15)
-        data_indicator.grid(row = 1, column = 2, padx=15, pady=15)
+        data_button.grid(row=0, column = 1, padx=15, pady=15)
+        data_indicator.grid(row = 1, column = 1, padx=15, pady=15)
 
         columns_frame = ctk.CTkScrollableFrame(load_files_frame, orientation=HORIZONTAL)
-        columns_frame.grid(row=2, column=2, padx=15, pady=15, sticky="ew")
-        columns_frame.grid_columnconfigure(0, weight=1)  # Make the scrollable frame expand
-
-        columns_text = ctk.CTkLabel(columns_frame, text = "")
-        columns_text.grid(row=0,column=0, padx=15,pady=5, sticky='w')
+        columns_frame.grid(row=2, column=1, padx=15, pady=15, sticky="ew")
 
         #feature selection,
         data_configuration = ctk.CTkFrame(self.main_frame, corner_radius=10)
