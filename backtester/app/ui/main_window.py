@@ -8,6 +8,7 @@ import tkinterweb
 import threading
 from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import LSTM, Dropout, Dense, Input
+import tensorflow as tf
 import pandas as pd
 import numpy as np
 
@@ -558,8 +559,8 @@ class MainWindow(ctk.CTk):
             widget.destroy()
 
         path_container = {}
-        model_input_shape = None
-        model_output_shape = None
+        self.model_input_shape = None
+        self.model_output_shape = None
         #internal functions
         def load_model_file():
             model_file_path = filedialog.askopenfilename(filetypes=[("HDF5 files", "*.h5")])
@@ -568,57 +569,32 @@ class MainWindow(ctk.CTk):
                 model_indicator.configure(text="Model " + os.path.basename(model_file_path) + " loaded")
                 path_container['model_path'] = model_file_path
                 model = load_model(path_container['model_path'])
-                model_input_shape = model.input_shape
-                model_output_shape = model.output_shape
+                self.model_input_shape = model.input_shape
+                self.model_output_shape = model.output_shape
                 model_shape.configure(text=f"Shape of Model Input is: {model.input_shape}, \n and Model Output is: {model.output_shape}")
                 model_shape.grid()
 
         def load_data_file():
-            data_file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
+            data_file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx"), ("Parquet files", "*.parquet"), ("CSV files", "*.csv")])
             if data_file_path:
                 #print("Data loaded:", data_file_path)
                 data_indicator.configure(text="Data " + os.path.basename(data_file_path) + " loaded")
                 path_container['data_path'] = data_file_path
 
-        def create_sequences(data, sequence_length=30, prediction_steps=5, target_column='Close', include_columns=None):
-            """
-            Generates sequences and target values from time-series data.
-
-            Parameters:
-            data (DataFrame): The input DataFrame containing the time-series data.
-            sequence_length (int): The number of timesteps in each input sequence.
-            prediction_steps (int): The number of steps to predict in the future.
-            target_column (str): The column from which the target values are derived.
-            include_columns (list): List of column names to include in the input sequences. If None, all columns are included.
-
-            Returns:
-            X (ndarray): Input sequences array.
-            y (ndarray): Target values array.
-            """
-
-            # Validate input parameters
-            if target_column not in data.columns:
-                raise ValueError(f"The target column '{target_column}' is not in the dataframe.")
-            if include_columns is not None and any(col not in data.columns for col in include_columns):
-                missing_cols = [col for col in include_columns if col not in data.columns]
-                raise ValueError(f"Missing columns in the dataframe: {', '.join(missing_cols)}")
-            if len(data) < sequence_length + prediction_steps:
-                raise ValueError("The data is too short to create any sequence.")
-            
-            # Prepare data by dropping rows with NaNs and reset index
-            data = data.dropna().reset_index(drop=True)
-
-            # Determine the columns to include in the sequences
-            input_columns = data.columns if include_columns is None else include_columns
+        def create_sequences(data, sequence_length, prediction_steps, target_column='Close', include_columns=None):
             X, y = [], []
-
-            # Generate sequences
+            data = data.dropna().reset_index(drop=True)  # Reset index after dropping NA values
+            
+            # Select columns if specified, otherwise default to using only the target column
+            if include_columns is not None:
+                data = data[include_columns + [target_column]]
+            else:
+                data = data[[target_column]]
+                
             for i in range(sequence_length, len(data) - prediction_steps + 1):
-                X.append(data.loc[i-sequence_length:i-1, input_columns].values)
-                future_value = data.loc[i + prediction_steps - 1, target_column]
-                base_value = data.loc[i - 1, target_column]
-                y.append((future_value - base_value) / base_value if base_value else 0)  # Safeguard division by zero
-
+                X.append(data.iloc[i-sequence_length:i].values)  # Adjust based on actual columns to include
+                y.append(data[target_column].pct_change(prediction_steps).iloc[i + prediction_steps - 1])
+                
             return np.array(X), np.array(y)
 
         def generate_sequence(input_shape):
@@ -629,7 +605,7 @@ class MainWindow(ctk.CTk):
             if 'data_path' not in path_container:
                 sequence_preview_text.configure(text="No data file loaded.")
                 return
-            
+            print(input_shape)
             sequence_length = int(sequence_length_entry.get())
             if sequence_length != input_shape[1]:  # assuming input_shape is like (None, sequence_length, num_features)
                 sequence_preview_text.configure(text=f"Sequence length mismatch. Model expects {input_shape[1]}.")
@@ -638,24 +614,61 @@ class MainWindow(ctk.CTk):
             # Load data and handle possible exceptions
             try:
                 data = pd.read_csv(path_container['data_path'])  # Load data, adjust based on actual data type
-                target_column = 'Close'  # Example: use a dropdown or text entry to set this in the GUI
+                target_column = 'close'  # Example: use a dropdown or text entry to set this in the GUI
                 include_columns = None  # Example: this could be set via a multi-select list or checkboxes in the GUI
 
                 # Generate sequences using the refactored function
+                # Prediction steps is how many units into the future we are trying to predict
                 X, y = create_sequences(data, sequence_length, prediction_steps=5, target_column=target_column, include_columns=include_columns)
+
+                #print("Sample of X:", X[:1]) 
+                #print("Sample of y:", y[:1])  
 
                 # Update GUI to indicate successful sequence generation
                 sequence_preview_text.configure(text="Sequence generated successfully. Number of sequences: " + str(len(X)))
             except Exception as e:
                 sequence_preview_text.configure(text=f"Error: {str(e)}")
 
+
         def start_training():
-            # Training logic here...
+            if 'model_path' not in path_container or 'data_path' not in path_container:
+                sequence_preview_text.configure(text="Model or data file not loaded.")
+                return
+
+            # Load model
+            model = load_model(path_container['model_path'])
+
             # Fetch hyperparameters
-            learning_rate = float(learning_rate_entry.get())
-            epochs = int(epochs_entry.get())
-            # Start training model, assuming model training logic is implemented elsewhere
-            print("Training started with learning rate:", learning_rate, "and epochs:", epochs)
+            try:
+                learning_rate = float(learning_rate_entry.get())
+                epochs = int(epochs_entry.get())
+            except ValueError:
+                sequence_preview_text.configure(text="Invalid hyperparameters.")
+                return
+
+            # Load and prepare data
+            data = pd.read_csv(path_container['data_path'])
+            sequence_length = int(sequence_length_entry.get())  # Ensure this entry is validated earlier in the workflow
+            X, y = create_sequences(data, sequence_length, prediction_steps=5, target_column='close')
+
+            # Split data into training and testing
+            split_index = int(len(X) * 0.8)
+            X_train, X_test = X[:split_index], X[split_index:]
+            y_train, y_test = y[:split_index], y[split_index:]
+
+            # Compile the model
+            model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
+                        loss='mean_squared_error',
+                        metrics=['mean_absolute_error'])
+
+            # Train the model
+            history = model.fit(X_train, y_train, epochs=epochs, validation_data=(X_test, y_test), verbose=1)
+
+            # Update GUI post-training
+            sequence_preview_text.configure(text=f"Training complete. Final validation loss: {history.history['val_loss'][-1]}")
+
+            # Optionally save the trained model
+            model.save('updated_model.h5')
 
         load_files_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
         load_files_frame.pack(pady=15,side=TOP,fill=X,padx=20)
@@ -690,7 +703,7 @@ class MainWindow(ctk.CTk):
         sequence_length_entry.grid(row=1, column=1, padx=15, pady=15)
 
         # Button to apply sequence settings and preview the sequence
-        sequence_apply_button = ctk.CTkButton(sequence_generation_frame, text="Generate Sequence", command=lambda: generate_sequence(model_input_shape))
+        sequence_apply_button = ctk.CTkButton(sequence_generation_frame, text="Generate Sequence", command=lambda: generate_sequence(self.model_input_shape))
         sequence_apply_button.grid(row=2, column=1, padx=15, pady=15)
 
         # Placeholder for sequence preview
@@ -718,7 +731,7 @@ class MainWindow(ctk.CTk):
 
         # Button to start model training
         train_model_button = ctk.CTkButton(hyperparameter_frame, text="Start Training", command=start_training)
-        train_model_button.grid(row=2, column=1, padx=15, pady=15)
+        train_model_button.grid(row=3, column=1, padx=15, pady=15)
 
 
 
