@@ -13,7 +13,8 @@ import pandas as pd
 import numpy as np
 import io
 from contextlib import redirect_stdout
-
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+import pickle
 
 from backtesting.test import EURUSD
 
@@ -422,7 +423,6 @@ class MainWindow(ctk.CTk):
         model_build_button_frame.pack(pady=20, side=TOP, fill = X, padx = 20)
 
         #have a button that hits backtest, which calls the backtest function, which will return a html and we will embed that,
-                                                                                                        #comamnd missing here
         model_build_button = ctk.CTkButton(model_build_button_frame, text="Build Model", font=self.button_font, command=lambda: build_and_save_model())
         model_build_button.grid(row=0, column=0, padx=15, pady=15)
 
@@ -452,6 +452,7 @@ class MainWindow(ctk.CTk):
 
         def load_data_file(self):
             data_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
+            path_container['data_path'] = data_file_path
             if data_file_path:
                 data_indicator.configure(text="Data " + os.path.basename(data_file_path) + " loaded")
                 try:
@@ -505,15 +506,68 @@ class MainWindow(ctk.CTk):
                     scaler_indicator.configure(text="Model Scaler " + os.path.basename(scaler_file_path) + " loaded")
                     path_container['scaler_path'] = scaler_file_path 
 
+            scaler_button = ctk.CTkButton(frame, text="Load Scaler (.pkl)", font=self.button_font, command=load_scaler_file)
+            scaler_indicator = ctk.CTkLabel(frame, text="No Scaler Model Selected")
+
             if value == "Upload Scaler":
-                scaler_button = ctk.CTkButton(frame, text="Load Scaler (.pkl)", font=self.button_font, command=load_scaler_file)
                 scaler_button.grid(row=0, column=2,padx=15,pady=15)
-                scaler_indicator = ctk.CTkLabel(frame, text="No Scaler Model Selected")
                 scaler_indicator.grid(row=0,column=3,padx=15,pady=15)
             else:
-                scaler_button.grid_remove()
-                scaler_indicator.grid_remove()
+                scaler_button.grid_forget()
+                scaler_indicator.grid_forget()
 
+        def display_data_preview(self, scaled_data):
+            # Clear previous data in the frame
+            for widget in data_preview_frame.winfo_children():
+                widget.destroy()
+
+            # Displaying first few rows of data
+            num_rows = min(10, len(scaled_data))  # Limit the number of rows to display
+            header = ' | '.join(scaled_data.columns)
+            header_label = ctk.CTkLabel(data_preview_frame, text=header, text_color="#FFFFFF",anchor='w')
+            header_label.pack(side="top", fill='x', padx=10, pady=2)
+
+            for row_index in range(num_rows):
+                row_data = scaled_data.iloc[row_index]
+                row_text = ' | '.join(str(x) for x in row_data)
+                row_label = ctk.CTkLabel(data_preview_frame, text=row_text, text_color="#FFFFFF", anchor='w')
+                row_label.pack(side="top", fill='x', padx=10, pady=2)
+
+            # Configure the frame to be scrollable if it's not already
+            data_preview_frame.pack(side="left", fill="both", expand=True)
+
+        def process_and_save_data(self):
+            try:
+                original_data_path = path_container['data_path']
+                if not original_data_path:
+                    raise Exception("Data not loaded")
+                
+                data = pd.read_csv(original_data_path) if original_data_path.endswith('.csv') \
+                    else pd.read_excel(original_data_path) if original_data_path.endswith('.xlsx') \
+                    else pd.read_parquet(original_data_path)
+
+                # Step 2: Delete columns not present in self.columns
+                current_columns = list(self.columns.keys())
+                data = data[current_columns]
+
+                # Step 3: Apply scaler
+                scaler_choice = choose_scaler_combo.get()
+                if scaler_choice == 'MinMaxScaler':
+                    scaler = MinMaxScaler()
+                elif scaler_choice == 'StandardScalar':
+                    scaler = StandardScaler()
+                elif scaler_choice == 'Upload Scaler' and 'scaler_path' in path_container:
+                    with open(path_container['scaler_path'], 'rb') as f:
+                        scaler = pickle.load(f)
+                else:
+                    raise Exception("No valid scaler selected or loaded")
+
+                scaled_data = pd.DataFrame(scaler.fit_transform(data), columns=data.columns)
+                display_data_preview(self,scaled_data)  # Display the data in a simplified format
+
+            except Exception as e:
+                error_label = ctk.CTkLabel(data_preview_frame, text="Error: " + str(e), fg_color="#FFFFFF")
+                error_label.pack(pady=15, padx=15, fill='both', expand=True)
 
         process_data_title = ctk.CTkLabel(self.main_frame, text="Process Data", font=self.title_font, text_color="#353535")
         process_data_title.pack(pady=20,padx=25, side=TOP, anchor = "w")
@@ -578,13 +632,29 @@ class MainWindow(ctk.CTk):
         data_process_button_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
         data_process_button_frame.pack(pady=15,side=TOP,fill=X,padx=20)
 
-        data_process_button = ctk.CTkButton(data_process_button_frame, font=self.button_font, text="Process Data & Save")
+        data_process_button = ctk.CTkButton(data_process_button_frame, font=self.button_font, text="Process Data & Save", command=lambda: process_and_save_data(self))
         data_process_button.grid(row=0,column=0,padx=15,pady=15)
+
+        data_preview_frame_outer = ctk.CTkFrame(self.main_frame,corner_radius=10)
+        data_preview_frame_outer.pack(pady=15,padx=20, side=TOP,fill=X)
+
+        processed_data_indicator = ctk.CTkLabel(data_preview_frame_outer, text=f"Preview of processed data", font=self.button_font)
+        processed_data_indicator.pack(pady=15,padx=15,side=TOP,fill=X)
+
+        data_preview_frame = ctk.CTkScrollableFrame(data_preview_frame_outer,corner_radius=10, fg_color="#353535")
+        data_preview_frame.pack(pady=15,padx=15,side=TOP,fill=X)
+
+
         
+    #------------------------------------------------------------------------------------------------------------------------------------------------
+
     def load_train_model(self):
         #wipe previous frame
         for widget in self.main_frame.winfo_children():
             widget.destroy()
+
+        process_data_title = ctk.CTkLabel(self.main_frame, text="Model Training", font=self.title_font, text_color="#353535")
+        process_data_title.pack(pady=20,padx=25, side=TOP, anchor = "w")
 
         path_container = {}
         self.model_input_shape = None
