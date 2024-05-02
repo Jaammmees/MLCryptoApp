@@ -9,6 +9,7 @@ import threading
 from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import LSTM, Dropout, Dense, Input
 import pandas as pd
+import numpy as np
 
 
 from backtesting.test import EURUSD
@@ -54,12 +55,12 @@ class MainWindow(ctk.CTk):
         #images
         chart_image = Image.open("./images/line-chart-svgrepo-com.png")
         dollar_image = Image.open("./images/dollar-sign-svgrepo-com.png")
-        settings_image = Image.open("./images/settings-svgrepo-com.png")
+        train_image = Image.open("./images/settings-svgrepo-com.png")
         data_image = Image.open("./images/data-svgrepo-com.png")
         build_image = Image.open("./images/build-svgrepo-com.png")
         self.backtestImage = ctk.CTkImage(dark_image = chart_image, size=(50,50))
         self.realTimeImage = ctk.CTkImage(dark_image = dollar_image, size=(50,50))
-        self.settingsImage = ctk.CTkImage(dark_image = settings_image, size=(50,50))
+        self.trainImage = ctk.CTkImage(dark_image = train_image, size=(50,50))
         self.dataImage = ctk.CTkImage(dark_image = data_image, size=(50,50))
         self.buildImage = ctk.CTkImage(dark_image = build_image, size=(50,50))
         
@@ -68,14 +69,14 @@ class MainWindow(ctk.CTk):
         button_realtime = ctk.CTkButton(self.sidebar, text="Real-Time", font=self.navbar_font, compound=BOTTOM, command=self.load_realtime, image=self.realTimeImage, width=60,height=60)
         button_build = ctk.CTkButton(self.sidebar, text="Build Model", font=self.navbar_font, compound=BOTTOM, command=self.load_build_model, image=self.buildImage, width=60,height=60)
         button_data = ctk.CTkButton(self.sidebar, text="Process Data", font=self.navbar_font, compound=BOTTOM, command=self.load_process_data, image=self.dataImage, width=60,height=60)
-        button_setting = ctk.CTkButton(self.sidebar, text="Settings", font=self.navbar_font, compound=BOTTOM, command=self.load_settings, image=self.settingsImage, width=60,height=60)
+        button_training = ctk.CTkButton(self.sidebar, text="Train Model", font=self.navbar_font, compound=BOTTOM, command=self.load_train_model, image=self.trainImage, width=60,height=60)
         
         #grid positioning
         button_backtest.grid(row=1, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
         button_realtime.grid(row=2, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
         button_build.grid(row=3, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
         button_data.grid(row=4, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
-        button_setting.grid(row=5, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
+        button_training.grid(row=5, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
 
         self.sidebar.grid_columnconfigure(0, weight=1)  # Make column 0 take up all available space
         self.sidebar.grid_rowconfigure(0, weight=1)  # Spacer row at the top
@@ -483,7 +484,10 @@ class MainWindow(ctk.CTk):
                 scaler_button = ctk.CTkButton(frame, text="Load Scaler (.pkl)", font=self.button_font, command=load_scaler_file)
                 scaler_button.grid(row=0, column=2,padx=15,pady=15)
                 scaler_indicator = ctk.CTkLabel(frame, text="No Scaler Model Selected")
-                scaler_indicator.grid(row=1,column=2,padx=15,pady=15)
+                scaler_indicator.grid(row=0,column=3,padx=15,pady=15)
+            else:
+                scaler_button.grid_remove()
+                scaler_indicator.grid_remove()
 
 
         process_data_title = ctk.CTkLabel(self.main_frame, text="Process Data", font=self.title_font, text_color="#353535")
@@ -542,14 +546,182 @@ class MainWindow(ctk.CTk):
 
         # Sequence Preparation:
         # intake the model shape for the sequence length, crucial for LSTM models.
-        sequence_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
-        sequence_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+        data_process_button_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        data_process_button_frame.pack(pady=15,side=TOP,fill=X,padx=20)
 
-        # Button to trigger the sequence creation process, using the sequence length and selected features.
-        # Display of sample sequences to verify correct formation.
+        data_process_button = ctk.CTkButton(data_process_button_frame, font=self.button_font, text="Process Data & Save")
+        data_process_button.grid(row=0,column=0,padx=15,pady=15)
         
-        # then a button to train the model if required, or to just save the processed data, 
-        
+    def load_train_model(self):
+        #wipe previous frame
+        for widget in self.main_frame.winfo_children():
+            widget.destroy()
+
+        path_container = {}
+        model_input_shape = None
+        model_output_shape = None
+        #internal functions
+        def load_model_file():
+            model_file_path = filedialog.askopenfilename(filetypes=[("HDF5 files", "*.h5")])
+            if model_file_path:
+                #print("Model loaded:", model_file_path)
+                model_indicator.configure(text="Model " + os.path.basename(model_file_path) + " loaded")
+                path_container['model_path'] = model_file_path
+                model = load_model(path_container['model_path'])
+                model_input_shape = model.input_shape
+                model_output_shape = model.output_shape
+                model_shape.configure(text=f"Shape of Model Input is: {model.input_shape}, \n and Model Output is: {model.output_shape}")
+                model_shape.grid()
+
+        def load_data_file():
+            data_file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
+            if data_file_path:
+                #print("Data loaded:", data_file_path)
+                data_indicator.configure(text="Data " + os.path.basename(data_file_path) + " loaded")
+                path_container['data_path'] = data_file_path
+
+        def create_sequences(data, sequence_length=30, prediction_steps=5, target_column='Close', include_columns=None):
+            """
+            Generates sequences and target values from time-series data.
+
+            Parameters:
+            data (DataFrame): The input DataFrame containing the time-series data.
+            sequence_length (int): The number of timesteps in each input sequence.
+            prediction_steps (int): The number of steps to predict in the future.
+            target_column (str): The column from which the target values are derived.
+            include_columns (list): List of column names to include in the input sequences. If None, all columns are included.
+
+            Returns:
+            X (ndarray): Input sequences array.
+            y (ndarray): Target values array.
+            """
+
+            # Validate input parameters
+            if target_column not in data.columns:
+                raise ValueError(f"The target column '{target_column}' is not in the dataframe.")
+            if include_columns is not None and any(col not in data.columns for col in include_columns):
+                missing_cols = [col for col in include_columns if col not in data.columns]
+                raise ValueError(f"Missing columns in the dataframe: {', '.join(missing_cols)}")
+            if len(data) < sequence_length + prediction_steps:
+                raise ValueError("The data is too short to create any sequence.")
+            
+            # Prepare data by dropping rows with NaNs and reset index
+            data = data.dropna().reset_index(drop=True)
+
+            # Determine the columns to include in the sequences
+            input_columns = data.columns if include_columns is None else include_columns
+            X, y = [], []
+
+            # Generate sequences
+            for i in range(sequence_length, len(data) - prediction_steps + 1):
+                X.append(data.loc[i-sequence_length:i-1, input_columns].values)
+                future_value = data.loc[i + prediction_steps - 1, target_column]
+                base_value = data.loc[i - 1, target_column]
+                y.append((future_value - base_value) / base_value if base_value else 0)  # Safeguard division by zero
+
+            return np.array(X), np.array(y)
+
+        def generate_sequence(input_shape):
+            # Validate sequence length entry
+            if not sequence_length_entry.get().isdigit():
+                sequence_preview_text.configure(text="Invalid sequence length.")
+                return
+            if 'data_path' not in path_container:
+                sequence_preview_text.configure(text="No data file loaded.")
+                return
+            
+            sequence_length = int(sequence_length_entry.get())
+            if sequence_length != input_shape[1]:  # assuming input_shape is like (None, sequence_length, num_features)
+                sequence_preview_text.configure(text=f"Sequence length mismatch. Model expects {input_shape[1]}.")
+                return
+            
+            # Load data and handle possible exceptions
+            try:
+                data = pd.read_csv(path_container['data_path'])  # Load data, adjust based on actual data type
+                target_column = 'Close'  # Example: use a dropdown or text entry to set this in the GUI
+                include_columns = None  # Example: this could be set via a multi-select list or checkboxes in the GUI
+
+                # Generate sequences using the refactored function
+                X, y = create_sequences(data, sequence_length, prediction_steps=5, target_column=target_column, include_columns=include_columns)
+
+                # Update GUI to indicate successful sequence generation
+                sequence_preview_text.configure(text="Sequence generated successfully. Number of sequences: " + str(len(X)))
+            except Exception as e:
+                sequence_preview_text.configure(text=f"Error: {str(e)}")
+
+        def start_training():
+            # Training logic here...
+            # Fetch hyperparameters
+            learning_rate = float(learning_rate_entry.get())
+            epochs = int(epochs_entry.get())
+            # Start training model, assuming model training logic is implemented elsewhere
+            print("Training started with learning rate:", learning_rate, "and epochs:", epochs)
+
+        load_files_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        load_files_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+
+        #model stuff
+        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.h5)", font=self.button_font, command=load_model_file)
+        model_indicator = ctk.CTkLabel(load_files_frame, text="No Model Selected")
+        model_button.grid(row=0, column = 0, padx=15, pady=15)
+        model_indicator.grid(row = 1, column = 0, padx=15, pady=15)
+        model_shape = ctk.CTkLabel(load_files_frame, text="")
+        model_shape.grid(row=2, column = 0, padx=15,pady=15)
+        model_shape.grid_remove()
+
+        #data stuff
+        data_button = ctk.CTkButton(load_files_frame, text="Load Data (Excel/Parquet)", font=self.button_font, command=load_data_file)
+        data_indicator = ctk.CTkLabel(load_files_frame, text="No Data Selected")
+        data_button.grid(row=0, column = 2, padx=15, pady=15)
+        data_indicator.grid(row = 1, column = 2, padx=15, pady=15)
+
+        #sequence generation
+        sequence_generation_frame = ctk.CTkFrame(self.main_frame,corner_radius=10)
+        sequence_generation_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+
+        # Sequence generation setup
+        sequence_label = ctk.CTkLabel(sequence_generation_frame, text="Configure Sequence Generation", font=self.button_font)
+        sequence_label.grid(row=0, column=0, padx=15, pady=5)
+
+        # Sequence length entry
+        sequence_length_label = ctk.CTkLabel(sequence_generation_frame, text="Sequence Length:")
+        sequence_length_label.grid(row=1, column=0, padx=15, pady=15)
+        sequence_length_entry = ctk.CTkEntry(sequence_generation_frame)
+        sequence_length_entry.grid(row=1, column=1, padx=15, pady=15)
+
+        # Button to apply sequence settings and preview the sequence
+        sequence_apply_button = ctk.CTkButton(sequence_generation_frame, text="Generate Sequence", command=lambda: generate_sequence(model_input_shape))
+        sequence_apply_button.grid(row=2, column=1, padx=15, pady=15)
+
+        # Placeholder for sequence preview
+        sequence_preview_label = ctk.CTkLabel(sequence_generation_frame, text="Sequence Preview:")
+        sequence_preview_label.grid(row=3, column=0, padx=15, pady=15)
+        sequence_preview_text = ctk.CTkLabel(sequence_generation_frame, text="", font=("Helvetica", 10))
+        sequence_preview_text.grid(row=3, column=1, padx=15, pady=15)
+
+        # Hyperparameter configuration section
+        hyperparameter_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        hyperparameter_frame.pack(pady=15, side=TOP, fill=X, padx=20)
+        hyperparameter_label = ctk.CTkLabel(sequence_generation_frame, text="Configure Sequence Generation", font=self.button_font)
+        hyperparameter_label.grid(row=0, column=0, padx=15, pady=5)
+        # Learning rate entry
+        learning_rate_label = ctk.CTkLabel(hyperparameter_frame, text="Learning Rate:")
+        learning_rate_label.grid(row=1, column=0, padx=15, pady=15)
+        learning_rate_entry = ctk.CTkEntry(hyperparameter_frame)
+        learning_rate_entry.grid(row=1, column=1, padx=15, pady=15)
+
+        # Epochs entry
+        epochs_label = ctk.CTkLabel(hyperparameter_frame, text="Epochs:")
+        epochs_label.grid(row=2, column=0, padx=15, pady=15)
+        epochs_entry = ctk.CTkEntry(hyperparameter_frame)
+        epochs_entry.grid(row=2, column=1, padx=15, pady=5)
+
+        # Button to start model training
+        train_model_button = ctk.CTkButton(hyperparameter_frame, text="Start Training", command=start_training)
+        train_model_button.grid(row=2, column=1, padx=15, pady=15)
+
+
+
 
     def load_realtime(self):
         #wipe previous frame
@@ -559,23 +731,6 @@ class MainWindow(ctk.CTk):
         label = ctk.CTkLabel(self.main_frame, text = "realtime area")
         label.pack(pady=20)
 
-    def load_settings(self):
-        #wipe previous frame
-        for widget in self.main_frame.winfo_children():
-            widget.destroy()
-
-        label = ctk.CTkLabel(self.main_frame, text = "settings area")
-        label.pack(pady=20)
-
-        # Combo box for theme selection
-        self.theme_combobox = ctk.CTkComboBox(self.main_frame, values=["Dark", "Light"], command=self.change_theme)
-        self.theme_combobox.set("Dark")  # Set the default value to match the initial theme
-        self.theme_combobox.pack(pady=20)
-
-    def change_theme(self, event=None):
-        # Change the appearance mode based on the combo box selection
-        selected_theme = self.theme_combobox.get()
-        self._set_appearance_mode(selected_theme)
 
     
         
