@@ -1,24 +1,27 @@
+#library imports
 import customtkinter as ctk
 from tkinter import *
-from PIL import Image, ImageTk
-from tkinter import filedialog
-import os
-#from trading.historical import run_backtest_and_save_report
-import tkinterweb
-import threading
-from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import LSTM, Dropout, Dense, Input
-import tensorflow as tf
-import pandas as pd
-import numpy as np
-import io
-from contextlib import redirect_stdout
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
-import pickle
-
-from backtesting.test import EURUSD
+from PIL import Image
+from tensorflow.keras.models import Sequential # type: ignore
+from tensorflow.keras.layers import LSTM, Dropout, Dense, Input # type: ignore
+from utils.display_model_summary import display_model_summary
+from utils.data_handling import load_data_file, load_data_file_and_modify, process_and_save_data
+from utils.model_management import load_model_file, load_model_preview, load_model_file_return_shapes, start_training
+from utils.sequence_processing import generate_sequence
+from utils.scaler_management import load_scaler_file, upload_scaler_prompt
 
 class MainWindow(ctk.CTk):
+    """
+    Main application window for a machine learning backtester GUI built using customtkinter.
+
+    The window includes a sidebar for navigation and a main frame where different functionalities are displayed,
+    such as historical data loading, real-time data processing, model building, and training.
+
+    Methods:
+    create_widgets: Sets up widgets in the main frame (not implemented here).
+    setup_sidebar: Initializes and configures sidebar with navigation buttons.
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -43,47 +46,15 @@ class MainWindow(ctk.CTk):
 
         self.setup_sidebar()
 
+        #makes historical default
         self.load_historical()
 
-        self.create_widgets()
-
-    def create_widgets(self):
-        pass
-
-    def display_model_summary(self, model_path, display_frame):
-        """
-        Loads a .h5 model, captures its summary, and displays it in a provided customtkinter frame.
-        """
-        # Load the model and capture its summary
-        model = load_model(model_path)
-        str_io = io.StringIO()
-
-        with redirect_stdout(str_io):
-            model.summary()
-
-        summary_lines = str_io.getvalue().splitlines()
-
-        # Parse the summary
-        header, rows, footer = self.parse_summary(summary_lines)
-
-        # Clear previous widgets from the frame
-        for widget in display_frame.winfo_children():
-            widget.destroy()
-
-        # Display the new model summary in the frame
-        for line in header + rows + footer:
-            label = ctk.CTkLabel(master=display_frame, text=line, text_color='#FFFFFF', font=self.button_font)
-            label.pack(pady=2, padx=10, anchor="w")
-
-        display_frame.pack(padx=15, pady=15, expand=True, fill='both')
-
-    def parse_summary(self, lines):
-        header = lines[0:4]  # Assuming first 4 lines include the headers and separators
-        rows = lines[4:-5]  # The model layers are listed after the header and before the total params
-        footer = lines[-5:]  # Total params and other details
-        return header, rows, footer
-
     def setup_sidebar(self):
+        """
+        Sets up the sidebar with navigation buttons each linked to a specific functionality within the application.
+
+        This method loads images for buttons, creates button widgets, and configures their grid placement in the sidebar.
+        """
 
         #images
         chart_image = Image.open("./images/line-chart-svgrepo-com.png")
@@ -111,6 +82,7 @@ class MainWindow(ctk.CTk):
         button_data.grid(row=4, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
         button_training.grid(row=5, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
 
+        #sidebar positioning
         self.sidebar.grid_columnconfigure(0, weight=1)  # Make column 0 take up all available space
         self.sidebar.grid_rowconfigure(0, weight=1)  # Spacer row at the top
         self.sidebar.grid_rowconfigure(1, weight=0)  # Actual button row
@@ -120,38 +92,37 @@ class MainWindow(ctk.CTk):
         self.sidebar.grid_rowconfigure(5, weight=0)  # Spacer row at the bottom
         self.sidebar.grid_rowconfigure(6, weight=1)  # Spacer row at the bottom
 
-
+    #------------------------------------------------------------------------------------------------------------------------------------------------
 
     def load_historical(self):
+        """
+        Prepares the frame for historical data loading and backtesting operations within the application.
+
+        This method handles the user interface setup for loading models, scalers, and historical data files,
+        providing a GUI for initiating backtests. It includes creating and positioning buttons for loading
+        necessary components and executing the backtest.
+
+        Steps Performed:
+        1. Clear existing widgets: This ensures the main frame is ready for new content.
+        2. Display title: A label for "Backtesting" is set up to indicate the current operation.
+        3. Setup loaders: Buttons and indicators for loading the machine learning model, scaler, and data file are created.
+        4. Prepare for backtesting: Configures a frame with a button that should trigger the backtesting process (functionality to be linked).
+        5. Result display setup: Initializes a frame intended to display the results of the backtest.
+
+        Important GUI Elements Created:
+        - backtest_title (ctk.CTkLabel): Label indicating the backtesting section.
+        - loader_frame (ctk.CTkFrame): Contains buttons for loading the model, scaler, and data.
+        - model_button, scaler_button, data_button (ctk.CTkButton): Buttons to trigger loading respective files.
+        - model_indicator, scaler_indicator, data_indicator (ctk.CTkLabel): Labels to show load status.
+        - backtest_button_frame (ctk.CTkFrame): Frame for the backtest initiation button.
+        - backtest_button (ctk.CTkButton): Button to start the backtesting process (requires command linking).
+        - backtest_result_frame (ctk.CTkFrame): Frame where backtest results would be displayed.
+        """
         #wipe previous frame
         for widget in self.main_frame.winfo_children():
             widget.destroy()
 
         path_container = {}
-
-        #internal functions to laod files
-        def load_model_file():
-            model_file_path = filedialog.askopenfilename(filetypes=[("HDF5 files", "*.h5")])
-            if model_file_path:
-                #print("Model loaded:", model_file_path)
-                model_indicator.configure(text="Model " + os.path.basename(model_file_path) + " loaded")
-                path_container['model_path'] = model_file_path
-
-        def load_scaler_file():
-            scaler_file_path = filedialog.askopenfilename(filetypes=[("Pickle files", "*.pkl")])
-            if scaler_file_path:
-                #print("Scaler loaded:", scaler_file_path)
-                scaler_indicator.configure(text="Model Scaler " + os.path.basename(scaler_file_path) + " loaded")
-                path_container['scaler_path'] = scaler_file_path 
-
-        def load_data_file():
-            data_file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
-            if data_file_path:
-                #print("Data loaded:", data_file_path)
-                data_indicator.configure(text="Data " + os.path.basename(data_file_path) + " loaded")
-                path_container['data_path'] = data_file_path
-
-        #--------------------------------------------------------------------------------------------------
 
         #title
         backtest_title = ctk.CTkLabel(self.main_frame, text="Backtesting", font=self.title_font, text_color="#353535")
@@ -164,11 +135,11 @@ class MainWindow(ctk.CTk):
         #need to be able to load a machine model, and a scalar, choose the data we want to backtest it on LOCALLY or just a TICKER that we can grab
         #the data has to be in the form INDEX == Timestep, Open, High, Low, Close, Volume as of now
         #buttons and text for loading model, scaler, and data
-        model_button = ctk.CTkButton(loader_frame, text="Load Model (.h5)", font=self.button_font, command=load_model_file)
+        model_button = ctk.CTkButton(loader_frame, text="Load Model (.h5)", font=self.button_font, command=lambda : load_model_file(path_container, model_indicator))
         model_indicator = ctk.CTkLabel(loader_frame, text="No Model Selected")
-        scaler_button = ctk.CTkButton(loader_frame, text="Load Scaler (.pkl)", font=self.button_font, command=load_scaler_file)
+        scaler_button = ctk.CTkButton(loader_frame, text="Load Scaler (.pkl)", font=self.button_font, command=lambda : load_scaler_file(path_container, scaler_indicator))
         scaler_indicator = ctk.CTkLabel(loader_frame, text="No Scaler Model Selected")
-        data_button = ctk.CTkButton(loader_frame, text="Load Data (Excel/Parquet)", font=self.button_font, command=load_data_file)
+        data_button = ctk.CTkButton(loader_frame, text="Load Data (Excel/Parquet)", font=self.button_font, command=lambda : load_data_file(path_container, data_indicator))
         data_indicator = ctk.CTkLabel(loader_frame, text="No Data Selected")
 
         #pack buttons side by side
@@ -230,6 +201,8 @@ class MainWindow(ctk.CTk):
 
         backtest_result_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
         backtest_result_frame.pack(pady=10, side=TOP, fill = BOTH, padx = 20)
+
+    #------------------------------------------------------------------------------------------------------------------------------------------------
 
         #in relation to building the model
     def update_layer_type(self, value, index):
@@ -343,7 +316,7 @@ class MainWindow(ctk.CTk):
             model.save('models/' + hyper_params['model name'] + '.h5')  # Save the model
 
             model_path = 'models/' + hyper_params['model name'] + '.h5'
-            self.display_model_summary(model_path, self.model_preview_frame)
+            display_model_summary(model_path, self.model_preview_frame, self.button_font)
 
         #title
         build_model_title = ctk.CTkLabel(self.main_frame, text="Build Model", font=self.title_font, text_color="#353535")
@@ -431,9 +404,26 @@ class MainWindow(ctk.CTk):
         self.model_preview_frame.pack(pady=20, side=RIGHT, fill = X, padx = 20)
         self.model_preview_frame.pack_forget() 
 
-
+    #------------------------------------------------------------------------------------------------------------------------------------------------
 
     def load_process_data(self):
+        """
+        Sets up the GUI for data processing including model loading, data loading, and data preprocessing operations.
+
+        This method handles the setup for:
+        - Loading and displaying machine learning models.
+        - Loading, modifying, and displaying data files.
+        - Data normalization and scaling selection.
+        - Initiating data processing and saving operations.
+
+        Steps:
+        1. Clear existing widgets: Ensures the main frame is ready for new widgets.
+        2. Create and display the title for the data processing section.
+        3. Configure frames and buttons for loading models and data, and for displaying model summaries.
+        4. Allow dynamic loading and modification of data columns.
+        5. Provide options for data normalization and scaling.
+        6. Prepare and display the interface for initiating the data processing.
+        """
         #wipe previous frame
         for widget in self.main_frame.winfo_children():
             widget.destroy()
@@ -442,148 +432,24 @@ class MainWindow(ctk.CTk):
         self.columns = {}
         path_container = {}
 
-        def load_model_file():
-            model_file_path = filedialog.askopenfilename(filetypes=[("HDF5 files", "*.h5")])
-            if model_file_path:
-                #print("Model loaded:", model_file_path)
-                model_indicator.configure(text="Model " + os.path.basename(model_file_path) + " loaded")
-                path_container['model_path'] = model_file_path
-                self.display_model_summary(model_file_path, model_preview_frame)
-
-        def load_data_file(self):
-            data_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
-            path_container['data_path'] = data_file_path
-            if data_file_path:
-                data_indicator.configure(text="Data " + os.path.basename(data_file_path) + " loaded")
-                try:
-                    if data_file_path.endswith('.csv'):
-                        data = pd.read_csv(data_file_path)
-                    elif data_file_path.endswith('.xlsx'):
-                        data = pd.read_excel(data_file_path)
-                    elif data_file_path.endswith('.parquet'):
-                        data = pd.read_parquet(data_file_path)
-
-                    # Clear previous data in the frame
-                    for widget in columns_frame.winfo_children():
-                        widget.destroy()
-
-                    for widget in self.column_list_frame.winfo_children():
-                        widget.destroy()
-                    
-                    # Create labels for column names and first few rows
-                    for i, column in enumerate(data.columns):
-                        ctk.CTkLabel(columns_frame, text=column, width=20).grid(row=0, column=i)
-                
-                        frame = ctk.CTkFrame(self.column_list_frame, height = 50)
-                        frame.pack(side="left", fill="x", expand=True,padx=10,pady=10)
-
-                        label = ctk.CTkLabel(frame, text=column)
-                        label.pack(side="left", fill="x", expand=True, padx=10)
-
-                        delete_button = ctk.CTkButton(frame, text="X", width=40, height=40, command=lambda c=column: delete_column(self,c))
-                        delete_button.pack(side="right")
-
-                        self.columns[column] = frame
-
-                    for row_index in range(min(5, len(data))):
-                        for col_index, column in enumerate(data.columns):
-                            ctk.CTkLabel(columns_frame, text=str(data.iloc[row_index, col_index]), width=60).grid(row=row_index + 1, column=col_index)
-
-                except Exception as e:
-                    data_indicator.configure(text=f"Failed to load data: {str(e)}")
-
-        def delete_column(self, column):
-            if column in self.columns:
-                self.columns[column].destroy()  # Remove the widget
-                del self.columns[column]  # Remove the reference
-
-        def upload_scaler_prompt(value, frame):
-
-            def load_scaler_file():
-                scaler_file_path = filedialog.askopenfilename(filetypes=[("Pickle files", "*.pkl")])
-                if scaler_file_path:
-                    #print("Scaler loaded:", scaler_file_path)
-                    scaler_indicator.configure(text="Model Scaler " + os.path.basename(scaler_file_path) + " loaded")
-                    path_container['scaler_path'] = scaler_file_path 
-
-            scaler_button = ctk.CTkButton(frame, text="Load Scaler (.pkl)", font=self.button_font, command=load_scaler_file)
-            scaler_indicator = ctk.CTkLabel(frame, text="No Scaler Model Selected")
-
-            if value == "Upload Scaler":
-                scaler_button.grid(row=0, column=2,padx=15,pady=15)
-                scaler_indicator.grid(row=0,column=3,padx=15,pady=15)
-            else:
-                scaler_button.grid_forget()
-                scaler_indicator.grid_forget()
-
-        def display_data_preview(self, scaled_data):
-            # Clear previous data in the frame
-            for widget in data_preview_frame.winfo_children():
-                widget.destroy()
-
-            # Displaying first few rows of data
-            num_rows = min(10, len(scaled_data))  # Limit the number of rows to display
-            header = ' | '.join(scaled_data.columns)
-            header_label = ctk.CTkLabel(data_preview_frame, text=header, text_color="#FFFFFF",anchor='w')
-            header_label.pack(side="top", fill='x', padx=10, pady=2)
-
-            for row_index in range(num_rows):
-                row_data = scaled_data.iloc[row_index]
-                row_text = ' | '.join(str(x) for x in row_data)
-                row_label = ctk.CTkLabel(data_preview_frame, text=row_text, text_color="#FFFFFF", anchor='w')
-                row_label.pack(side="top", fill='x', padx=10, pady=2)
-
-            # Configure the frame to be scrollable if it's not already
-            data_preview_frame.pack(side="left", fill="both", expand=True)
-
-        def process_and_save_data(self):
-            try:
-                original_data_path = path_container['data_path']
-                if not original_data_path:
-                    raise Exception("Data not loaded")
-                
-                data = pd.read_csv(original_data_path) if original_data_path.endswith('.csv') \
-                    else pd.read_excel(original_data_path) if original_data_path.endswith('.xlsx') \
-                    else pd.read_parquet(original_data_path)
-
-                # Step 2: Delete columns not present in self.columns
-                current_columns = list(self.columns.keys())
-                data = data[current_columns]
-
-                # Step 3: Apply scaler
-                scaler_choice = choose_scaler_combo.get()
-                if scaler_choice == 'MinMaxScaler':
-                    scaler = MinMaxScaler()
-                elif scaler_choice == 'StandardScalar':
-                    scaler = StandardScaler()
-                elif scaler_choice == 'Upload Scaler' and 'scaler_path' in path_container:
-                    with open(path_container['scaler_path'], 'rb') as f:
-                        scaler = pickle.load(f)
-                else:
-                    raise Exception("No valid scaler selected or loaded")
-
-                scaled_data = pd.DataFrame(scaler.fit_transform(data), columns=data.columns)
-                display_data_preview(self,scaled_data)  # Display the data in a simplified format
-
-            except Exception as e:
-                error_label = ctk.CTkLabel(data_preview_frame, text="Error: " + str(e), fg_color="#FFFFFF")
-                error_label.pack(pady=15, padx=15, fill='both', expand=True)
+        def delete_column(column, columns):
+            # print(column, columns)
+            print(f"trying to delete column {column}")
+            if column in columns:
+                columns[column].destroy()  # Remove the widget
+                del columns[column]  # Remove the reference
 
         process_data_title = ctk.CTkLabel(self.main_frame, text="Process Data", font=self.title_font, text_color="#353535")
         process_data_title.pack(pady=20,padx=25, side=TOP, anchor = "w")
 
         #Data Upload:
-        # Button to upload dataset files.
-        # Display of uploaded file paths to confirm the data is loaded.
-        # allow for loading of model (to see input and output shape) and allow for loading of data to be processed
-        # Frame to hold file loading components
         load_files_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
         load_files_frame.pack(pady=15, side='top', fill='x', padx=20)
         load_files_frame.grid_columnconfigure(0, weight=1)  # Set equal weight if needed
         load_files_frame.grid_columnconfigure(1, weight=1)  # Set equal weight if needed
 
         # Button to load a model
-        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.h5)", font=self.button_font, command=load_model_file)
+        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.h5)", font=self.button_font, command= lambda : load_model_preview(path_container, model_indicator, model_preview_frame, display_model_summary, self.button_font))
         model_button.grid(row=0, column=0, padx=15, pady=15, ipadx=20)  # Fill the cell
 
         # Indicator label for model loading
@@ -599,7 +465,9 @@ class MainWindow(ctk.CTk):
         model_preview_frame.pack(padx=15, pady=15, expand=True, fill='both')  # Fill the outer frame
 
         #data
-        data_button = ctk.CTkButton(load_files_frame, text="Load Data (Excel/Parquet)", font=self.button_font, command=lambda: load_data_file(self))
+        data_button = ctk.CTkButton(load_files_frame, text="Load Data (Excel/Parquet)",
+                                font=self.button_font, 
+                                command=lambda: load_data_file_and_modify(path_container, self.columns,data_indicator, columns_frame, self.column_list_frame, delete_column))
         data_indicator = ctk.CTkLabel(load_files_frame, text="No Data Selected")
         data_button.grid(row=0, column = 1, padx=15, pady=15)
         data_indicator.grid(row = 1, column = 1, padx=15, pady=15)
@@ -624,7 +492,8 @@ class MainWindow(ctk.CTk):
         choose_scaler_text = ctk.CTkLabel(normalisation_frame, text="Choose Scaler")
         choose_scaler_text.grid(row=0,column=0,padx=15,pady=15)
         # provide option to upload own scaler file too, which will make it pop up the upload scaler button,
-        choose_scaler_combo = ctk.CTkComboBox(normalisation_frame, values=['MinMaxScaler', 'StandardScalar', 'Upload Scaler'], command=lambda value : upload_scaler_prompt(value, normalisation_frame))
+        choose_scaler_combo = ctk.CTkComboBox(normalisation_frame, values=['MinMaxScaler', 'StandardScalar', 'Upload Scaler'], 
+                                      command=lambda value: upload_scaler_prompt(value, normalisation_frame, path_container, self.button_font))
         choose_scaler_combo.grid(row=0,column=1,padx=15,pady=15)
 
         # Sequence Preparation:
@@ -632,7 +501,7 @@ class MainWindow(ctk.CTk):
         data_process_button_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
         data_process_button_frame.pack(pady=15,side=TOP,fill=X,padx=20)
 
-        data_process_button = ctk.CTkButton(data_process_button_frame, font=self.button_font, text="Process Data & Save", command=lambda: process_and_save_data(self))
+        data_process_button = ctk.CTkButton(data_process_button_frame, font=self.button_font, text="Process Data & Save", command=lambda: process_and_save_data(path_container, self.columns, data_preview_frame, choose_scaler_combo))
         data_process_button.grid(row=0,column=0,padx=15,pady=15)
 
         data_preview_frame_outer = ctk.CTkFrame(self.main_frame,corner_radius=10)
@@ -644,11 +513,29 @@ class MainWindow(ctk.CTk):
         data_preview_frame = ctk.CTkScrollableFrame(data_preview_frame_outer,corner_radius=10, fg_color="#353535")
         data_preview_frame.pack(pady=15,padx=15,side=TOP,fill=X)
 
-
-        
     #------------------------------------------------------------------------------------------------------------------------------------------------
 
     def load_train_model(self):
+        """
+        Configures the main frame for model training operations, including loading data and models, setting up sequence generation,
+        and configuring training hyperparameters.
+
+        This method orchestrates the setup for:
+        - Loading machine learning models and the corresponding data for training.
+        - Specifying sequence generation parameters crucial for time-series model training.
+        - Allowing the user to configure and initiate the training process.
+
+        Steps:
+        1. Clear the existing GUI components in the main frame to make space for new components.
+        2. Create labels, entries, and buttons that allow the user to:
+            - Load a model and visualize its input and output shapes.
+            - Load the dataset for training.
+            - Configure and apply sequence settings for the model.
+            - Set training hyperparameters (like learning rate and epochs).
+            - Initiate the training process.
+        3. Display dynamic feedback on the model and data status, and provide a preview area for generated sequences.
+        """
+
         #wipe previous frame
         for widget in self.main_frame.winfo_children():
             widget.destroy()
@@ -659,133 +546,31 @@ class MainWindow(ctk.CTk):
         path_container = {}
         self.model_input_shape = None
         self.model_output_shape = None
-        #internal functions
-        def load_model_file():
-            model_file_path = filedialog.askopenfilename(filetypes=[("HDF5 files", "*.h5")])
-            if model_file_path:
-                #print("Model loaded:", model_file_path)
-                model_indicator.configure(text="Model " + os.path.basename(model_file_path) + " loaded")
-                path_container['model_path'] = model_file_path
-                model = load_model(path_container['model_path'])
-                self.model_input_shape = model.input_shape
-                self.model_output_shape = model.output_shape
-                model_shape.configure(text=f"Shape of Model Input is: {model.input_shape}, \n and Model Output is: {model.output_shape}")
-                model_shape.grid()
 
-        def load_data_file():
-            data_file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx"), ("Parquet files", "*.parquet"), ("CSV files", "*.csv")])
-            if data_file_path:
-                #print("Data loaded:", data_file_path)
-                data_indicator.configure(text="Data " + os.path.basename(data_file_path) + " loaded")
-                path_container['data_path'] = data_file_path
-
-        def create_sequences(data, sequence_length, prediction_steps, target_column='Close', include_columns=None):
-            X, y = [], []
-            data = data.dropna().reset_index(drop=True)  # Reset index after dropping NA values
-            
-            # Select columns if specified, otherwise default to using only the target column
-            if include_columns is not None:
-                data = data[include_columns + [target_column]]
-            else:
-                data = data[[target_column]]
-                
-            for i in range(sequence_length, len(data) - prediction_steps + 1):
-                X.append(data.iloc[i-sequence_length:i].values)  # Adjust based on actual columns to include
-                y.append(data[target_column].pct_change(prediction_steps).iloc[i + prediction_steps - 1])
-                
-            return np.array(X), np.array(y)
-
-        def generate_sequence(input_shape):
-            # Validate sequence length entry
-            if not sequence_length_entry.get().isdigit():
-                sequence_preview_text.configure(text="Invalid sequence length.")
-                return
-            if 'data_path' not in path_container:
-                sequence_preview_text.configure(text="No data file loaded.")
-                return
-            print(input_shape)
-            sequence_length = int(sequence_length_entry.get())
-            if sequence_length != input_shape[1]:  # assuming input_shape is like (None, sequence_length, num_features)
-                sequence_preview_text.configure(text=f"Sequence length mismatch. Model expects {input_shape[1]}.")
-                return
-            
-            # Load data and handle possible exceptions
-            try:
-                data = pd.read_csv(path_container['data_path'])  # Load data, adjust based on actual data type
-                target_column = 'close'  # Example: use a dropdown or text entry to set this in the GUI
-                include_columns = None  # Example: this could be set via a multi-select list or checkboxes in the GUI
-
-                # Generate sequences using the refactored function
-                # Prediction steps is how many units into the future we are trying to predict
-                X, y = create_sequences(data, sequence_length, prediction_steps=5, target_column=target_column, include_columns=include_columns)
-
-                #print("Sample of X:", X[:1]) 
-                #print("Sample of y:", y[:1])  
-
-                # Update GUI to indicate successful sequence generation
-                sequence_preview_text.configure(text="Sequence generated successfully. Number of sequences: " + str(len(X)))
-            except Exception as e:
-                sequence_preview_text.configure(text=f"Error: {str(e)}")
-
-
-        def start_training():
-            if 'model_path' not in path_container or 'data_path' not in path_container:
-                sequence_preview_text.configure(text="Model or data file not loaded.")
-                return
-
-            # Load model
-            model = load_model(path_container['model_path'])
-
-            # Fetch hyperparameters
-            try:
-                learning_rate = float(learning_rate_entry.get())
-                epochs = int(epochs_entry.get())
-            except ValueError:
-                sequence_preview_text.configure(text="Invalid hyperparameters.")
-                return
-
-            # Load and prepare data
-            data = pd.read_csv(path_container['data_path'])
-            sequence_length = int(sequence_length_entry.get())  # Ensure this entry is validated earlier in the workflow
-            X, y = create_sequences(data, sequence_length, prediction_steps=5, target_column='close')
-
-            # Split data into training and testing
-            split_index = int(len(X) * 0.8)
-            X_train, X_test = X[:split_index], X[split_index:]
-            y_train, y_test = y[:split_index], y[split_index:]
-
-            # Compile the model
-            model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-                        loss='mean_squared_error',
-                        metrics=['mean_absolute_error'])
-
-            # Train the model
-            history = model.fit(X_train, y_train, epochs=epochs, validation_data=(X_test, y_test), verbose=1)
-
-            # Update GUI post-training
-            sequence_preview_text.configure(text=f"Training complete. Final validation loss: {history.history['val_loss'][-1]}")
-
-            # Optionally save the trained model
-            model.save('updated_model.h5')
+        def update_shapes():
+            input_shape, output_shape = load_model_file_return_shapes(path_container, model_indicator, model_shape)
+            if input_shape and output_shape:
+                self.model_input_shape = input_shape
+                self.model_output_shape = output_shape
 
         load_files_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
         load_files_frame.pack(pady=15,side=TOP,fill=X,padx=20)
 
         #model stuff
-        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.h5)", font=self.button_font, command=load_model_file)
         model_indicator = ctk.CTkLabel(load_files_frame, text="No Model Selected")
-        model_button.grid(row=0, column = 0, padx=15, pady=15)
         model_indicator.grid(row = 1, column = 0, padx=15, pady=15)
         model_shape = ctk.CTkLabel(load_files_frame, text="")
         model_shape.grid(row=2, column = 0, padx=15,pady=15)
         model_shape.grid_remove()
+        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.h5)", font=self.button_font, command=lambda: update_shapes())
+        model_button.grid(row=0, column = 0, padx=15, pady=15)
 
         #data stuff
-        data_button = ctk.CTkButton(load_files_frame, text="Load Data (Excel/Parquet)", font=self.button_font, command=load_data_file)
         data_indicator = ctk.CTkLabel(load_files_frame, text="No Data Selected")
-        data_button.grid(row=0, column = 2, padx=15, pady=15)
         data_indicator.grid(row = 1, column = 2, padx=15, pady=15)
-
+        data_button = ctk.CTkButton(load_files_frame, text="Load Data (Excel/Parquet)", font=self.button_font, command= lambda: load_data_file(path_container, data_indicator))
+        data_button.grid(row=0, column = 2, padx=15, pady=15)
+        
         #sequence generation
         sequence_generation_frame = ctk.CTkFrame(self.main_frame,corner_radius=10)
         sequence_generation_frame.pack(pady=15,side=TOP,fill=X,padx=20)
@@ -801,7 +586,7 @@ class MainWindow(ctk.CTk):
         sequence_length_entry.grid(row=1, column=1, padx=15, pady=15)
 
         # Button to apply sequence settings and preview the sequence
-        sequence_apply_button = ctk.CTkButton(sequence_generation_frame, text="Generate Sequence", command=lambda: generate_sequence(self.model_input_shape))
+        sequence_apply_button = ctk.CTkButton(sequence_generation_frame, text="Generate Sequence", command=lambda: generate_sequence(self.model_input_shape, sequence_length_entry.get(), sequence_preview_text, path_container))
         sequence_apply_button.grid(row=2, column=1, padx=15, pady=15)
 
         # Placeholder for sequence preview
@@ -828,11 +613,8 @@ class MainWindow(ctk.CTk):
         epochs_entry.grid(row=2, column=1, padx=15, pady=5)
 
         # Button to start model training
-        train_model_button = ctk.CTkButton(hyperparameter_frame, text="Start Training", command=start_training)
+        train_model_button = ctk.CTkButton(hyperparameter_frame, text="Start Training", command= lambda : start_training(path_container, sequence_preview_text, sequence_length_entry.get(), learning_rate_entry.get(), epochs_entry.get()))
         train_model_button.grid(row=3, column=1, padx=15, pady=15)
-
-
-
 
     def load_realtime(self):
         #wipe previous frame
@@ -841,12 +623,3 @@ class MainWindow(ctk.CTk):
 
         label = ctk.CTkLabel(self.main_frame, text = "realtime area")
         label.pack(pady=20)
-
-
-    
-        
-
-
-if __name__ == "__main__":
-    app = MainWindow
-    app.mainloop()

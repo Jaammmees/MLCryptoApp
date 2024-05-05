@@ -1,16 +1,20 @@
 #things to do
 
+backtesting
+- once model building and data processing done, attempt to backtest and generate
+
+realtime
+- once the rest is done, we can start trying to simulate real-time
 
 building model
-- get rid of batch size, epoch and learning rate in build model, this is in training // Done
-- once built, try to show preview of the model // Done
+- actually integrate the optimiser and loss function into the training (i guess is more part of the train model bit too)
 
 data processing
-- try to show same preview of model when loading it // Done
-- show preview of formatted file 
+- add options to change column names too if needed.
+- make it look nicer 
 
 train model
 - make it look nicer
 - try to show progress in the window itself,
-
+- actually integrate the optimiser and loss function into the training (i guess is more part of the train model bit too) - from building model
 
