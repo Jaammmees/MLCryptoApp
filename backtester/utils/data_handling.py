@@ -161,11 +161,12 @@ def process_and_save_data(path_container, columns, data_preview_frame, choose_sc
             raise Exception("No valid scaler selected or loaded")
         
         scaled_data = pd.DataFrame(scaler.fit_transform(data), columns=data.columns)
+        scaled_data.set_index('close_time',inplace=True)
 
         ask_fileName = ctk.CTkInputDialog(text = "Name for Processed Data", title = "New Data File")
         if ask_fileName:
             filepath = f'./processed_data/{ask_fileName.get_input()}.csv'
-            scaled_data.to_csv(filepath, index = False)
+            scaled_data.to_csv(filepath, index = True)
 
         display_data_preview(scaled_data, data_preview_frame)  # Display the data in a simplified format
 
