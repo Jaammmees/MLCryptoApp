@@ -2,7 +2,11 @@ from tkinter import filedialog
 import pandas as pd
 import os
 from tensorflow.keras.models import load_model
+from keras.callbacks import Callback
 import tensorflow as tf
+from tensorflow.keras.optimizers import Adam, SGD, RMSprop
+import customtkinter as ctk
+import threading
 
 from utils.sequence_processing import create_sequences
 
@@ -17,7 +21,7 @@ def load_model_file(path_container, indicator):
     This function supports .h5 file formats for models.
     """
 
-    model_file_path = filedialog.askopenfilename(filetypes=[("HDF5 files", "*.h5")])
+    model_file_path = filedialog.askopenfilename(initialdir="./models", filetypes=[("HDF5 files", "*.h5")])
     if model_file_path:
         #print("Model loaded:", model_file_path)
         indicator.configure(text="Model " + os.path.basename(model_file_path) + " loaded")
@@ -38,7 +42,7 @@ def load_model_file_return_shapes(path_container, indicator, shape_indicator):
     This function also returns the model's input and output shapes for further use.
     """
 
-    model_file_path = filedialog.askopenfilename(filetypes=[("HDF5 files", "*.h5")])
+    model_file_path = filedialog.askopenfilename(initialdir="./models", filetypes=[("HDF5 files", "*.h5")])
     if model_file_path:
         indicator.configure(text="Model " + os.path.basename(model_file_path) + " loaded")
         path_container['model_path'] = model_file_path
@@ -62,19 +66,46 @@ def load_model_preview(path_container, model_indicator, model_preview_frame, dis
     This function updates the GUI with a preview of the model's structure.
     """
 
-    model_file_path = filedialog.askopenfilename(filetypes=[("HDF5 files", "*.h5")])
+    model_file_path = filedialog.askopenfilename(initialdir="./models", filetypes=[("HDF5 files", "*.h5")])
     if model_file_path:
         model_indicator.configure(text="Model " + os.path.basename(model_file_path) + " loaded")
         path_container['model_path'] = model_file_path
         display_model_summary(model_file_path, model_preview_frame, font)
 
-def start_training(path_container, sequence_preview_text, sequence_in, learning_rate, epochs):
+optimisers = {
+    'adam': Adam,
+    'sgd': SGD,
+    'rmsprop': RMSprop
+    #add more if needed
+}
+
+class GUIProgress(Callback):
+    def __init__(self, root, progress_bar, progress_bar_label):
+        self.root = root
+        self.progress_bar = progress_bar
+        self.progress_bar_label = progress_bar_label
+
+    def on_epoch_end(self, epoch, logs=None):
+        # Calculate the current progress
+        current_progress = (epoch + 1) / self.params['epochs'] * 100
+        self.progress_bar_label.configure(text = f"Epoch {epoch + 1}/{self.params['epochs']}")
+        # Schedule the update to be run in the main thread
+        self.root.after(0, self.update_progress_bar, current_progress)
+
+    def update_progress_bar(self, value):
+        # Convert the percentage to a value between 0 and 1
+        scaled_value = value / 100
+        self.progress_bar.set(scaled_value)  # Set the progress bar value
+        self.progress_bar.update_idletasks()
+
+
+def start_training(path_container, validation_loss_label, sequence_in, sequence_out, optimiser, loss_type, metrics_list, learning_rate, epochs, saved_label, root, progress_bar, progress_bar_label):
     """
     Starts the training process for a loaded model with the specified dataset and hyperparameters.
 
     Args:
     path_container (dict): Dictionary storing paths to the model and data files.
-    sequence_preview_text (Widget): Widget to display messages related to the training process.
+    validation_loss_label (Widget): Widget to display messages related to the training process.
     sequence_in (str): Entry widget content specifying the sequence length for training.
     learning_rate (float): Learning rate for the model optimizer.
     epochs (int): Number of training epochs.
@@ -82,8 +113,10 @@ def start_training(path_container, sequence_preview_text, sequence_in, learning_
     This function handles model training, including compiling and fitting the model, and updates the GUI with the training status.
     """
 
+    
+
     if 'model_path' not in path_container or 'data_path' not in path_container:
-        sequence_preview_text.configure(text="Model or data file not loaded.")
+        validation_loss_label.configure(text="Model or data file not loaded.")
         return
 
     # Load model
@@ -94,30 +127,53 @@ def start_training(path_container, sequence_preview_text, sequence_in, learning_
         learning_rate = float(learning_rate)
         epochs = int(epochs)
     except ValueError:
-        sequence_preview_text.configure(text="Invalid hyperparameters.")
+        validation_loss_label.configure(text="Invalid hyperparameters.")
         return
 
     # Load and prepare data
     data = pd.read_csv(path_container['data_path'])
-    sequence_length = int(sequence_in)  # Ensure this entry is validated earlier in the workflow
-    X, y = create_sequences(data, sequence_length, prediction_steps=5, target_column='close')
+    
+    sequence_length = int(sequence_in)
+    sequence_out = int(sequence_out)
+    print("Taking in", sequence_length, "units of data to predict the next", sequence_out)
+    X, y = create_sequences(data, sequence_length, sequence_out, target_column='close')
 
     # Split data into training and testing
     split_index = int(len(X) * 0.8)
     X_train, X_test = X[:split_index], X[split_index:]
     y_train, y_test = y[:split_index], y[split_index:]
 
-    # Compile the model
-    #still to change such that we actually take the inputs we make
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-                loss='mean_squared_error',
-                metrics=['mean_absolute_error'])
+    # Get the optimizer from the dictionary
+    optimiser_class = optimisers.get(optimiser.lower(), Adam)
+    optimiser = optimiser_class(learning_rate=learning_rate)
 
+    # Compile the model
+    model.compile(optimizer=optimiser, loss=loss_type, metrics=[metrics_list])
+
+    # Progress Bar
+    gui_progress = GUIProgress(root, progress_bar, progress_bar_label)
     # Train the model
-    history = model.fit(X_train, y_train, epochs=epochs, validation_data=(X_test, y_test), verbose=1)
+    history = model.fit(X_train, y_train, epochs=epochs, validation_data=(X_test, y_test), verbose=1, callbacks=[gui_progress])
+
+    metrics_summary = ""
+    # Get the last epoch's results
+    last_epoch_metrics = {key: values[-1] for key, values in history.history.items()}
+    # Create a formatted string of metric results
+    for metric, value in last_epoch_metrics.items():
+        metrics_summary += f"{metric}: {value:.4f}, "
+    # Remove the last comma and space
+    metrics_summary = metrics_summary.rstrip(', ')
 
     # Update GUI post-training
-    sequence_preview_text.configure(text=f"Training complete. Final validation loss: {history.history['val_loss'][-1]}")
+    validation_loss_label.configure(text=f"Training complete. Metrics: {metrics_summary}")
 
+    ask_fileName = ctk.CTkInputDialog(text = "Name for Trained Model", title = "New Trained Model")
+    if ask_fileName:
+        model.save(f'./models/{ask_fileName.get_input()}.h5')
+        progress_bar.grid_forget()
+        progress_bar_label.grid_forget()
+        saved_label.configure(text=f"Model Successfully Saved")
+
+    
     # Optionally save the trained model
-    model.save('./models/updated_model.h5')
+    

@@ -17,7 +17,7 @@ def load_data_file(path_container, indicator):
     The function supports CSV, Excel, and Parquet file formats.
     """
 
-    data_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
+    data_file_path = filedialog.askopenfilename(initialdir="./data", filetypes=[("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
     if data_file_path:
         #print("Data loaded:", data_file_path)
         indicator.configure(text="Data " + os.path.basename(data_file_path) + " loaded")
@@ -39,7 +39,7 @@ def load_data_file_and_modify(path_container, columns, data_indicator, columns_f
     This function also handles exceptions if the file loading fails.
     """
 
-    data_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
+    data_file_path = filedialog.askopenfilename(initialdir="./data", filetypes=[("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
     path_container['data_path'] = data_file_path
     if data_file_path:
         data_indicator.configure(text="Data " + os.path.basename(data_file_path) + " loaded")
@@ -172,3 +172,63 @@ def process_and_save_data(path_container, columns, data_preview_frame, choose_sc
     except Exception as e:
         error_label = ctk.CTkLabel(data_preview_frame, text="Error: " + str(e), fg_color="#FFFFFF")
         error_label.pack(pady=15, padx=15, fill='both', expand=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+def load_data_file_and_preview(path_container, data_indicator, columns_frame):
+    """
+    Loads data from a file and displays it in specified GUI frames.
+
+    Args:
+    path_container (dict): Container for file paths.
+    data_indicator (ctk.CTkLabel): Label to indicate the status of data loading.
+    columns_frame (ctk.CTkFrame): Frame to display column labels.
+
+    This function also handles exceptions if the file loading fails.
+    """
+    data_file_path = filedialog.askopenfilename(initialdir="./data", filetypes=[("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
+    path_container['data_path'] = data_file_path
+    if data_file_path:
+        data_indicator.configure(text="Data " + os.path.basename(data_file_path) + " loaded")
+        try:
+            if data_file_path.endswith('.csv'):
+                data = pd.read_csv(data_file_path)
+            elif data_file_path.endswith('.xlsx'):
+                data = pd.read_excel(data_file_path)
+            else:
+                data = pd.read_parquet(data_file_path)
+            display_data_preview(data, columns_frame)
+        except Exception as e:
+            data_indicator.configure(text=f"Failed to load data: {str(e)}")
+            messagebox.showerror("Error", f"Failed to load data: {str(e)}")
+
+def display_data_preview(data, columns_frame):
+    """
+    Displays data columns in the GUI.
+
+    Args:
+    data (DataFrame): Pandas DataFrame containing the data to display.
+    columns_frame (ctk.CTkFrame): Frame to display column labels.
+
+    This function creates labels for each column in the data.
+    """
+    for col_index, column in enumerate(data.columns):
+        label = ctk.CTkLabel(columns_frame, text=column, width=20, padx=20)
+        label.grid(row=0, column=col_index)
+        
+        # Display a few rows of data
+        num_rows_to_display = min(5, len(data))  # Show up to 5 rows
+        for row_index in range(num_rows_to_display):
+            value = data.iloc[row_index, col_index]
+            cell_label = ctk.CTkLabel(columns_frame, text=str(value), width=20)
+            cell_label.grid(row=row_index + 1, column=col_index, padx=20)

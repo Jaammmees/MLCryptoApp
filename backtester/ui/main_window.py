@@ -2,13 +2,14 @@
 import customtkinter as ctk
 from tkinter import *
 from PIL import Image
-from tensorflow.keras.models import Sequential # type: ignore
+from tensorflow.keras.models import Sequential, load_model # type: ignore
 from tensorflow.keras.layers import LSTM, Dropout, Dense, Input # type: ignore
 from utils.display_model_summary import display_model_summary
-from utils.data_handling import load_data_file, load_data_file_and_modify, process_and_save_data
+from utils.data_handling import load_data_file, load_data_file_and_modify, process_and_save_data, load_data_file_and_preview
 from utils.model_management import load_model_file, load_model_preview, load_model_file_return_shapes, start_training
 from utils.sequence_processing import generate_sequence
 from utils.scaler_management import load_scaler_file, upload_scaler_prompt
+import threading
 
 class MainWindow(ctk.CTk):
     """
@@ -299,9 +300,7 @@ class MainWindow(ctk.CTk):
             hyperparameters = {
                 'sequence_length_in': sequence_length_in_entry.get(),
                 'sequence_length_out': sequence_length_out_entry.get(),
-                'optimiser' : optimiser_entry.get(),
-                'loss' : loss_function_entry.get(),
-                'model name' : model_name_entry.get()
+                'model name' : model_name_entry.get(),
             }
 
             return layer_details, hyperparameters
@@ -312,7 +311,6 @@ class MainWindow(ctk.CTk):
             input_shape = (int(hyper_params['sequence_length_in']), int(hyper_params['sequence_length_out']))
             print(layer_info, hyper_params, input_shape)
             model = build_model(layer_info, input_shape)
-            model.compile(optimizer=hyper_params['optimiser'], loss=hyper_params['loss'])  # Example configuration
             model.save('models/' + hyper_params['model name'] + '.h5')  # Save the model
 
             model_path = 'models/' + hyper_params['model name'] + '.h5'
@@ -374,22 +372,6 @@ class MainWindow(ctk.CTk):
         sequence_length_out_label.grid(row=2, column=0, padx=15, pady=15)
         sequence_length_out_entry = ctk.CTkEntry(select_parameters_frame)
         sequence_length_out_entry.grid(row=2, column=1, padx=15, pady=15)
-        # Optimiser
-        optimiser_label = ctk.CTkLabel(select_parameters_frame, text="Optimiser")
-        optimiser_label.grid(row=1, column=2, padx=15, pady=15)
-        optimiser_options = ['SGD', 'RMSprop', 'Adam', 'Adadelta', 'Adagrad', 'Adamax', 'Nadam', 'Ftrl']
-        optimiser_entry = ctk.CTkComboBox(select_parameters_frame, values=optimiser_options)
-        optimiser_entry.grid(row=1, column=3, padx=15, pady=15)
-        optimiser_entry.set("Adam")  # Set default value
-        # Loss
-        loss_function_label = ctk.CTkLabel(select_parameters_frame, text="Loss Function")
-        loss_function_label.grid(row=2, column=2, padx=15, pady=15)
-        loss_function_options = ['mean_squared_error', 'mean_absolute_error', 'binary_crossentropy', 
-                                 'categorical_crossentropy', 'sparse_categorical_crossentropy', 'poisson', 
-                                 'kullback_leibler_divergence', 'hinge']
-        loss_function_entry = ctk.CTkComboBox(select_parameters_frame, values=loss_function_options)
-        loss_function_entry.grid(row=2, column=3, padx=15, pady=15)
-        loss_function_entry.set("mean_squared_error")  # Set default value
 
         # Submission: Button to confirm the setup and proceed to data preparation.
         model_build_button_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
@@ -548,58 +530,57 @@ class MainWindow(ctk.CTk):
         self.model_output_shape = None
 
         def update_shapes():
-            input_shape, output_shape = load_model_file_return_shapes(path_container, model_indicator, model_shape)
-            if input_shape and output_shape:
-                self.model_input_shape = input_shape
-                self.model_output_shape = output_shape
+            model = load_model(path_container['model_path'])
+            print("Update_shapes being called" + path_container['model_path'])
+            if model:
+                print("yes")
+                self.model_input_shape = model.input_shape
+                self.model_output_shape = model.output_shape
 
+        #Data Upload:
         load_files_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
-        load_files_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+        load_files_frame.pack(pady=15, side='top', fill='x', padx=20)
+        load_files_frame.grid_columnconfigure(0, weight=1)  # Set equal weight if needed
+        load_files_frame.grid_columnconfigure(1, weight=1)  # Set equal weight if needed
 
-        #model stuff
+        # Button to load a model
+        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.h5)", font=self.button_font, command= lambda : (load_model_preview(path_container, model_indicator, model_preview_frame, display_model_summary, self.button_font), update_shapes()))
+        model_button.grid(row=0, column=0, padx=15, pady=15, ipadx=20)  # Fill the cell
+
+        # Indicator label for model loading
         model_indicator = ctk.CTkLabel(load_files_frame, text="No Model Selected")
-        model_indicator.grid(row = 1, column = 0, padx=15, pady=15)
-        model_shape = ctk.CTkLabel(load_files_frame, text="")
-        model_shape.grid(row=2, column = 0, padx=15,pady=15)
-        model_shape.grid_remove()
-        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.h5)", font=self.button_font, command=lambda: update_shapes())
-        model_button.grid(row=0, column = 0, padx=15, pady=15)
+        model_indicator.grid(row=1, column=0, padx=15, pady=15, sticky='nsew')  # Fill the cell
 
-        #data stuff
+        # Outer frame for model preview (scrollable)
+        model_preview_frame_outer = ctk.CTkFrame(load_files_frame, corner_radius=10)
+        model_preview_frame_outer.grid(row=2, column=0, padx=15, pady=15, sticky='nsew')  # Fill the cell
+
+        # Scrollable frame for model preview
+        model_preview_frame = ctk.CTkScrollableFrame(model_preview_frame_outer, corner_radius=10, fg_color="#353535", orientation=VERTICAL)
+        model_preview_frame.pack(padx=15, pady=15, expand=True, fill='both')  # Fill the outer frame
+
+        #data
+        data_button = ctk.CTkButton(load_files_frame, text="Load Data (Excel/Parquet)",
+                                font=self.button_font, 
+                                command=lambda: load_data_file_and_preview(path_container, data_indicator, columns_frame))
         data_indicator = ctk.CTkLabel(load_files_frame, text="No Data Selected")
-        data_indicator.grid(row = 1, column = 2, padx=15, pady=15)
-        data_button = ctk.CTkButton(load_files_frame, text="Load Data (Excel/Parquet)", font=self.button_font, command= lambda: load_data_file(path_container, data_indicator))
-        data_button.grid(row=0, column = 2, padx=15, pady=15)
+        data_button.grid(row=0, column = 1, padx=15, pady=15)
+        data_indicator.grid(row = 1, column = 1, padx=15, pady=15)
+
+        columns_frame = ctk.CTkScrollableFrame(load_files_frame, orientation=HORIZONTAL)
+        columns_frame.grid(row=2, column=1, padx=15, pady=15, sticky="ew")
         
-        #sequence generation
-        sequence_generation_frame = ctk.CTkFrame(self.main_frame,corner_radius=10)
-        sequence_generation_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+        configuration_metrics_frame = ctk.CTkFrame(self.main_frame,corner_radius=10)
+        configuration_metrics_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+        configuration_metrics_frame.grid_columnconfigure(0, weight=1)
+        configuration_metrics_frame.grid_columnconfigure(1, weight=1)
 
-        # Sequence generation setup
-        sequence_label = ctk.CTkLabel(sequence_generation_frame, text="Configure Sequence Generation", font=self.button_font)
-        sequence_label.grid(row=0, column=0, padx=15, pady=5)
-
-        # Sequence length entry
-        sequence_length_label = ctk.CTkLabel(sequence_generation_frame, text="Sequence Length:")
-        sequence_length_label.grid(row=1, column=0, padx=15, pady=15)
-        sequence_length_entry = ctk.CTkEntry(sequence_generation_frame)
-        sequence_length_entry.grid(row=1, column=1, padx=15, pady=15)
-
-        # Button to apply sequence settings and preview the sequence
-        sequence_apply_button = ctk.CTkButton(sequence_generation_frame, text="Generate Sequence", command=lambda: generate_sequence(self.model_input_shape, sequence_length_entry.get(), sequence_preview_text, path_container))
-        sequence_apply_button.grid(row=2, column=1, padx=15, pady=15)
-
-        # Placeholder for sequence preview
-        sequence_preview_label = ctk.CTkLabel(sequence_generation_frame, text="Sequence Preview:")
-        sequence_preview_label.grid(row=3, column=0, padx=15, pady=15)
-        sequence_preview_text = ctk.CTkLabel(sequence_generation_frame, text="", font=("Helvetica", 10))
-        sequence_preview_text.grid(row=3, column=1, padx=15, pady=15)
-
+        hyperparameter_frame_label = ctk.CTkLabel(configuration_metrics_frame, text = "Training Configuration", font=self.button_font)
+        hyperparameter_frame_label.grid(row=0,column=0,pady=15,padx=15)
         # Hyperparameter configuration section
-        hyperparameter_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
-        hyperparameter_frame.pack(pady=15, side=TOP, fill=X, padx=20)
-        hyperparameter_label = ctk.CTkLabel(sequence_generation_frame, text="Configure Sequence Generation", font=self.button_font)
-        hyperparameter_label.grid(row=0, column=0, padx=15, pady=5)
+        hyperparameter_frame = ctk.CTkFrame(configuration_metrics_frame, corner_radius=10)
+        hyperparameter_frame.grid(row=1, column = 0, pady=15, padx=20, sticky='nsew')
+
         # Learning rate entry
         learning_rate_label = ctk.CTkLabel(hyperparameter_frame, text="Learning Rate:")
         learning_rate_label.grid(row=1, column=0, padx=15, pady=15)
@@ -612,9 +593,66 @@ class MainWindow(ctk.CTk):
         epochs_entry = ctk.CTkEntry(hyperparameter_frame)
         epochs_entry.grid(row=2, column=1, padx=15, pady=5)
 
+         # Optimiser
+        optimiser_label = ctk.CTkLabel(hyperparameter_frame, text="Optimiser")
+        optimiser_label.grid(row=1, column=3, padx=15, pady=15)
+        optimiser_options = ['SGD', 'RMSprop', 'Adam', 'Adadelta', 'Adagrad', 'Adamax', 'Nadam', 'Ftrl']
+        optimiser_entry = ctk.CTkComboBox(hyperparameter_frame, values=optimiser_options)
+        optimiser_entry.grid(row=1, column=4, padx=15, pady=15)
+        optimiser_entry.set("Adam")  # Set default value
+        # Loss
+        loss_function_label = ctk.CTkLabel(hyperparameter_frame, text="Loss Function")
+        loss_function_label.grid(row=2, column=3, padx=15, pady=15)
+        loss_function_options = ['mean_squared_error', 'mean_absolute_error', 'binary_crossentropy', 
+                                 'categorical_crossentropy', 'sparse_categorical_crossentropy', 'poisson', 
+                                 'kullback_leibler_divergence', 'hinge']
+        loss_function_entry = ctk.CTkComboBox(hyperparameter_frame, values=loss_function_options)
+        loss_function_entry.grid(row=2, column=4, padx=15, pady=15)
+        loss_function_entry.set("mean_squared_error")  # Set default value
+
+        # Metric
+        metric_function_label = ctk.CTkLabel(hyperparameter_frame, text="Metrics")
+        metric_function_label.grid(row=3, column=3, padx=15, pady=15)
+        metric_function_options = ["accuracy", "binary_accuracy", "categorical_accuracy",
+                                    "sparse_categorical_accuracy", "top_k_categorical_accuracy",
+                                    "sparse_top_k_categorical_accuracy", "mean_squared_error",
+                                    "root_mean_squared_error", "mean_absolute_error",
+                                    "mean_absolute_percentage_error", "cosine_similarity",
+                                    "hinge", "squared_hinge", "logcosh", "poisson"]
+        metric_function_entry = ctk.CTkComboBox(hyperparameter_frame, values=metric_function_options)
+        metric_function_entry.grid(row=3, column=4, padx=15, pady=15)
+        metric_function_entry.set("mean_absolute_error")  # Set default value
+
+        #metric frame
+        training_metrics_label = ctk.CTkLabel(configuration_metrics_frame, text="Training Metrics", font=self.button_font)
+        training_metrics_label.grid(row=0,column=1, padx=15, pady=20)
+        training_metrics_frame = ctk.CTkFrame(configuration_metrics_frame, corner_radius=10)
+        training_metrics_frame.grid(row=1, column=1, padx=15,pady=20, sticky='nsew')
+
+        validation_loss_label = ctk.CTkLabel(training_metrics_frame, text="")
+        validation_loss_label.grid(row=0,column=0, padx=15,pady=15)
+        
         # Button to start model training
-        train_model_button = ctk.CTkButton(hyperparameter_frame, text="Start Training", command= lambda : start_training(path_container, sequence_preview_text, sequence_length_entry.get(), learning_rate_entry.get(), epochs_entry.get()))
-        train_model_button.grid(row=3, column=1, padx=15, pady=15)
+        train_model_button_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        train_model_button_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+        training_progressBar = ctk.CTkProgressBar(train_model_button_frame, orientation=HORIZONTAL, progress_color="#33cc33")
+        training_progressBar.grid(row=0,column=1, padx=15,pady=15)
+        training_progressBar.set(0)
+        training_progressBar_label = ctk.CTkLabel(train_model_button_frame, text = "", font=self.button_font)
+        training_progressBar_label.grid(row=0,column=2,padx=15,pady=15)
+        saved_model_label = ctk.CTkLabel(train_model_button_frame, text="", font=self.button_font)
+        saved_model_label.grid(row=0,column=1, padx=15,pady=15)
+        train_model_button = ctk.CTkButton(
+        train_model_button_frame, text="Start Training", font=self.button_font, 
+        command=lambda: threading.Thread(
+            target=start_training,
+            args=(path_container, validation_loss_label, self.model_input_shape[1], self.model_output_shape[1], optimiser_entry.get(), loss_function_entry.get(), metric_function_entry.get(), learning_rate_entry.get(), epochs_entry.get(), saved_model_label, self, training_progressBar, training_progressBar_label),
+            daemon=True  # Ensures the thread will exit when the main program does
+        ).start()
+    )
+        train_model_button.grid(row=0,column=0,padx=15,pady=15)
+
+        
 
     def load_realtime(self):
         #wipe previous frame

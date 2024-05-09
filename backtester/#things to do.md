@@ -8,13 +8,17 @@ realtime
 
 building model
 - actually integrate the optimiser and loss function into the training (i guess is more part of the train model bit too)
+- allow for multiple metrics
 
 data processing
 - add options to change column names too if needed.
 - make it look nicer 
 
 train model
-- make it look nicer
+- show data preview
+- get rid of sequence generation, just show the sequence length given the model,
 - try to show progress in the window itself,
-- actually integrate the optimiser and loss function into the training (i guess is more part of the train model bit too) - from building model
 
+#bugs to fix and error messages to do
+whenever an error is counted, output it as a message box with ctk dialog
+could wrap in a whole try catch block,
