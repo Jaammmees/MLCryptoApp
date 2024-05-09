@@ -148,6 +148,7 @@ def process_and_save_data(path_container, columns, data_preview_frame, choose_sc
 
         current_columns = list(columns.keys())
         data = data[current_columns]
+        data.set_index('open_time',inplace=True)
 
         scaler_choice = choose_scaler_combo.get()
         if scaler_choice == 'MinMaxScaler':
@@ -161,7 +162,6 @@ def process_and_save_data(path_container, columns, data_preview_frame, choose_sc
             raise Exception("No valid scaler selected or loaded")
         
         scaled_data = pd.DataFrame(scaler.fit_transform(data), columns=data.columns)
-        scaled_data.set_index('close_time',inplace=True)
 
         ask_fileName = ctk.CTkInputDialog(text = "Name for Processed Data", title = "New Data File")
         if ask_fileName:
@@ -224,12 +224,12 @@ def display_data_preview(data, columns_frame):
     This function creates labels for each column in the data.
     """
     for col_index, column in enumerate(data.columns):
-        label = ctk.CTkLabel(columns_frame, text=column, width=20, padx=20)
+        label = ctk.CTkLabel(columns_frame, text=column, width=20, padx=20, text_color="#FFFFFF")
         label.grid(row=0, column=col_index)
         
         # Display a few rows of data
         num_rows_to_display = min(5, len(data))  # Show up to 5 rows
         for row_index in range(num_rows_to_display):
             value = data.iloc[row_index, col_index]
-            cell_label = ctk.CTkLabel(columns_frame, text=str(value), width=20)
+            cell_label = ctk.CTkLabel(columns_frame, text=str(value), width=20, text_color="#FFFFFF")
             cell_label.grid(row=row_index + 1, column=col_index, padx=20)
