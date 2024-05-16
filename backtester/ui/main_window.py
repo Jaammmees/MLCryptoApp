@@ -1,6 +1,7 @@
 #library imports
 import customtkinter as ctk
 from tkinter import *
+from tkcalendar import DateEntry
 from PIL import Image
 from tensorflow.keras.models import Sequential, load_model # type: ignore
 from tensorflow.keras.layers import LSTM, Dropout, Dense, Input # type: ignore
@@ -430,6 +431,20 @@ class MainWindow(ctk.CTk):
         load_files_frame.grid_columnconfigure(0, weight=1)  # Set equal weight if needed
         load_files_frame.grid_columnconfigure(1, weight=1)  # Set equal weight if needed
 
+        #datepicker
+        choose_date = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        choose_date.pack(pady=15,side=TOP,fill=X,padx=20)
+        
+        start_date_label = ctk.CTkLabel(choose_date, text="Start Date:")
+        start_date_label.pack(side=LEFT, padx=15, pady=15)
+        start_date_picker = DateEntry(choose_date, width=12, background='darkblue', foreground='white', borderwidth=2)
+        start_date_picker.pack(side=LEFT, padx=15, pady=15)
+        
+        end_date_label = ctk.CTkLabel(choose_date, text="End Date:")
+        end_date_label.pack(side=LEFT, padx=15, pady=15)
+        end_date_picker = DateEntry(choose_date, width=12, background='darkblue', foreground='white', borderwidth=2)
+        end_date_picker.pack(side=LEFT, padx=15, pady=15)
+
         # Button to load a model
         model_button = ctk.CTkButton(load_files_frame, text="Load Model (.h5)", font=self.button_font, command= lambda : load_model_preview(path_container, model_indicator, model_preview_frame, display_model_summary, self.button_font))
         model_button.grid(row=0, column=0, padx=15, pady=15, ipadx=20)  # Fill the cell
@@ -449,7 +464,7 @@ class MainWindow(ctk.CTk):
         #data
         data_button = ctk.CTkButton(load_files_frame, text="Load Data (Excel/Parquet)",
                                 font=self.button_font, 
-                                command=lambda: load_data_file_and_modify(path_container, self.columns,data_indicator, columns_frame, self.column_list_frame, delete_column))
+                                command=lambda: load_data_file_and_modify(path_container, self.columns,data_indicator, columns_frame, self.column_list_frame, delete_column, start_date_picker, end_date_picker))
         data_indicator = ctk.CTkLabel(load_files_frame, text="No Data Selected")
         data_button.grid(row=0, column = 1, padx=15, pady=15)
         data_indicator.grid(row = 1, column = 1, padx=15, pady=15)
@@ -483,7 +498,7 @@ class MainWindow(ctk.CTk):
         data_process_button_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
         data_process_button_frame.pack(pady=15,side=TOP,fill=X,padx=20)
 
-        data_process_button = ctk.CTkButton(data_process_button_frame, font=self.button_font, text="Process Data & Save", command=lambda: process_and_save_data(path_container, self.columns, data_preview_frame, choose_scaler_combo))
+        data_process_button = ctk.CTkButton(data_process_button_frame, font=self.button_font, text="Process Data & Save", command=lambda: process_and_save_data(path_container, self.columns, data_preview_frame, choose_scaler_combo, start_date_picker, end_date_picker))
         data_process_button.grid(row=0,column=0,padx=15,pady=15)
 
         data_preview_frame_outer = ctk.CTkFrame(self.main_frame,corner_radius=10)

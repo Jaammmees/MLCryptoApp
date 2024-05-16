@@ -2,17 +2,18 @@
 
 backtesting
 - once model building and data processing done, attempt to backtest and generate
+- need many configurable parameters
+    - needs to take in how many minutes next it should be predicting,
+    - whether it wants to backtest the whole period of the data? i know is already chosen in data processing but can do it again,
 
 realtime
 - once the rest is done, we can start trying to simulate real-time
 
 building model
-- actually integrate the optimiser and loss function into the training (i guess is more part of the train model bit too)
 - allow for multiple metrics
 
 data processing
 - add options to change column names too if needed.
-- make it look nicer 
 
 train model
 - show data preview
