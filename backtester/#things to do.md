@@ -6,6 +6,12 @@ backtesting
     - needs to take in how many minutes next it should be predicting,
     - whether it wants to backtest the whole period of the data? i know is already chosen in data processing but can do it again,
 
+- use case should be
+    - have processed training data, and have a scaler.pkl and column_names.pkl saved
+    - train a model on this processed training data,
+    - then when going to backtest, load the scaler.pkl, the column_names.pkl, the model, which allows it to process any data
+      that has a OHLCV at a minimum to predict on it,
+
 realtime
 - once the rest is done, we can start trying to simulate real-time
 

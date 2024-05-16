@@ -4,6 +4,7 @@ import pandas as pd
 import os
 import pickle
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
+import joblib
 
 #used in multiple places --------------------
 def load_data_file(path_container, indicator):
@@ -191,25 +192,31 @@ def process_and_save_data(path_container, columns, data_preview_frame, choose_sc
         scaler_choice = choose_scaler_combo.get()
         if scaler_choice == 'MinMaxScaler':
             scaler = MinMaxScaler()
-        elif scaler_choice == 'StandardScalar':
+        elif scaler_choice == 'StandardScaler':
             scaler = StandardScaler()
         elif scaler_choice == 'Upload Scaler' and 'scaler_path' in path_container:
             with open(path_container['scaler_path'], 'rb') as f:
                 scaler = pickle.load(f)
+        elif scaler_choice == 'No Scaler':
+            scaler = None
         else:
             raise Exception("No valid scaler selected or loaded")
-        
-        scaled_data = pd.DataFrame(scaler.fit_transform(data), columns=data.columns)
 
-        ask_fileName = ctk.CTkInputDialog(text = "Name for Processed Data", title = "New Data File")
+        if scaler is not None:
+            scaled_data = pd.DataFrame(scaler.fit_transform(data), columns=data.columns, index=data.index)
+        else:
+            scaled_data = data  # No scaling applied
+
+        ask_fileName = ctk.CTkInputDialog(text="Name for Processed Data", title="New Data File")
         if ask_fileName:
             file_name = ask_fileName.get_input()
             filepath = f'./processed_data/{file_name}.csv'
             scaler_filepath = f'./scalers/{file_name}_scaler.pkl'
-            scaled_data.to_csv(filepath, index = True)
+            scaler_columns_filepath = f'./scalers/{file_name}_scaler_columns.pkl'
 
-            with open(scaler_filepath, 'wb') as f:
-                pickle.dump(scaler,f)
+            scaled_data.to_csv(filepath, index=True)
+            joblib.dump(scaler, scaler_filepath)
+            joblib.dump(data.columns.tolist(), scaler_columns_filepath)
 
         display_data_preview(scaled_data, data_preview_frame)  # Display the data in a simplified format
 

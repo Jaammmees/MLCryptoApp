@@ -136,7 +136,7 @@ def start_training(path_container, validation_loss_label, sequence_in, sequence_
     sequence_length = int(sequence_in)
     sequence_out = int(sequence_out)
     print("Taking in", sequence_length, "units of data to predict the next", sequence_out)
-    X, y = create_sequences(data, sequence_length, sequence_out, target_column='close')
+    X, y = create_sequences(data, sequence_length, sequence_out, target_column='Close')
 
     # Split data into training and testing
     split_index = int(len(X) * 0.8)

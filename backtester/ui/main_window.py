@@ -7,9 +7,10 @@ from tensorflow.keras.models import Sequential, load_model # type: ignore
 from tensorflow.keras.layers import LSTM, Dropout, Dense, Input # type: ignore
 from utils.display_model_summary import display_model_summary
 from utils.data_handling import load_data_file, load_data_file_and_modify, process_and_save_data, load_data_file_and_preview
-from utils.model_management import load_model_file, load_model_preview, load_model_file_return_shapes, start_training
-from utils.sequence_processing import generate_sequence
-from utils.scaler_management import load_scaler_file, upload_scaler_prompt
+from utils.model_management import load_model_file, load_model_preview, start_training
+from utils.scaler_management import load_scaler_file, upload_scaler_prompt, load_columns_file
+from trading.historical import run_backtest
+
 import threading
 
 class MainWindow(ctk.CTk):
@@ -141,6 +142,8 @@ class MainWindow(ctk.CTk):
         model_indicator = ctk.CTkLabel(loader_frame, text="No Model Selected")
         scaler_button = ctk.CTkButton(loader_frame, text="Load Scaler (.pkl)", font=self.button_font, command=lambda : load_scaler_file(path_container, scaler_indicator))
         scaler_indicator = ctk.CTkLabel(loader_frame, text="No Scaler Model Selected")
+        columns_button = ctk.CTkButton(loader_frame, text="Load Columns (.pkl)", font=self.button_font, command=lambda : load_columns_file(path_container, columns_indicator))
+        columns_indicator = ctk.CTkLabel(loader_frame, text="No Columns File Selected")
         data_button = ctk.CTkButton(loader_frame, text="Load Data (Excel/Parquet)", font=self.button_font, command=lambda : load_data_file(path_container, data_indicator))
         data_indicator = ctk.CTkLabel(loader_frame, text="No Data Selected")
 
@@ -149,45 +152,10 @@ class MainWindow(ctk.CTk):
         model_indicator.grid(row = 1, column = 0, padx=15, pady=15)
         scaler_button.grid(row=0, column = 1, padx=15, pady=15)
         scaler_indicator.grid(row = 1, column = 1, padx=15, pady=15)
-        data_button.grid(row=0, column = 2, padx=15, pady=15)
-        data_indicator.grid(row = 1, column = 2, padx=15, pady=15)
-
-        #--------------------------------------------------------------------------------------------------
-        
-        #all backtesting functions
-
-        # def backtest_button_callback():
-        #     # Load data and create strategy instance here, or ensure they are accessible
-        #     data = EURUSD.copy()
-            
-        #     # Run backtest in a separate thread to avoid freezing the GUI
-        #     thread = threading.Thread(target=lambda: run_backtest_and_update_gui(data))
-        #     thread.start()
-
-        # def run_backtest_and_update_gui(data):
-        #     results, report_path = run_backtest_and_save_report(data)
-        #     display_backtest_results(backtest_result_frame, report_path, results)
-        
-        # def display_backtest_results(master, html_file, results):
-        #     # Clear previous results if necessary
-        #     for widget in master.winfo_children():
-        #         widget.destroy()
-
-        #     # Frame for the web view
-        #     web_frame = ctk.CTkFrame(master)
-        #     web_frame.pack(fill='both', expand=True)
-
-        #     # Display the HTML report
-        #     html_view = tkinterweb.HtmlFrame(web_frame, horizontal_scrollbar="auto")
-        #     html_view.load_file(html_file)  # Ensure html_file is the correct, full path
-        #     html_view.pack(fill='both', expand=True)
-
-        #     # Optionally display the results in a text widget or labels
-        #     results_text = ctk.CTkLabel(master, text=str(results))
-        #     results_text.pack(pady=20)
-
-
-        #-----------------------------------------------------------------------
+        columns_button.grid(row=0, column = 2, padx=15, pady=15)
+        columns_indicator.grid(row = 1, column = 2, padx=15, pady=15)
+        data_button.grid(row=0, column = 3, padx=15, pady=15)
+        data_indicator.grid(row = 1, column = 3, padx=15, pady=15)
         
         #backtesting frame
         backtest_button_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
@@ -195,7 +163,7 @@ class MainWindow(ctk.CTk):
 
         #have a button that hits backtest, which calls the backtest function, which will return a html and we will embed that,
                                                                                                         #comamnd missing here
-        backtest_button = ctk.CTkButton(backtest_button_frame, text="Run Backtest", font=self.button_font)
+        backtest_button = ctk.CTkButton(backtest_button_frame, text="Run Backtest", font=self.button_font, command=lambda : run_backtest(path_container['data_path'], path_container['model_path'],path_container['scaler_path'],path_container['columns_path']))
         backtest_button.grid(row=0, column=0, padx=15, pady=15)
 
 
@@ -489,7 +457,7 @@ class MainWindow(ctk.CTk):
         choose_scaler_text = ctk.CTkLabel(normalisation_frame, text="Choose Scaler")
         choose_scaler_text.grid(row=0,column=0,padx=15,pady=15)
         # provide option to upload own scaler file too, which will make it pop up the upload scaler button,
-        choose_scaler_combo = ctk.CTkComboBox(normalisation_frame, values=['MinMaxScaler', 'StandardScalar', 'Upload Scaler'], 
+        choose_scaler_combo = ctk.CTkComboBox(normalisation_frame, values=['MinMaxScaler', 'StandardScalar', 'Upload Scaler', 'No Scaler'], 
                                       command=lambda value: upload_scaler_prompt(value, normalisation_frame, path_container, self.button_font))
         choose_scaler_combo.grid(row=0,column=1,padx=15,pady=15)
 
