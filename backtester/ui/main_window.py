@@ -9,7 +9,7 @@ from utils.display_model_summary import display_model_summary
 from utils.data_handling import load_data_file, load_data_file_and_modify, process_and_save_data, load_data_file_and_preview
 from utils.model_management import load_model_file, load_model_preview, start_training
 from utils.scaler_management import load_scaler_file, upload_scaler_prompt, load_columns_file
-from trading.historical import run_backtest
+from trading.historical import run_backtest, start_backtest
 
 import threading
 
@@ -133,7 +133,7 @@ class MainWindow(ctk.CTk):
 
         #loading frame
         loader_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
-        loader_frame.pack(pady=5, side=TOP, fill = X, padx = 20)
+        loader_frame.pack(pady=15, side=TOP, fill = X, padx = 20)
 
         #need to be able to load a machine model, and a scalar, choose the data we want to backtest it on LOCALLY or just a TICKER that we can grab
         #the data has to be in the form INDEX == Timestep, Open, High, Low, Close, Volume as of now
@@ -157,18 +157,39 @@ class MainWindow(ctk.CTk):
         data_button.grid(row=0, column = 3, padx=15, pady=15)
         data_indicator.grid(row = 1, column = 3, padx=15, pady=15)
         
-        #backtesting frame
-        backtest_button_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
-        backtest_button_frame.pack(pady=20, side=TOP, fill = X, padx = 20)
+        #backtesting options
+        backtest_options_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        backtest_options_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+        starting_balance_label = ctk.CTkLabel(backtest_options_frame, text="Starting Balance", font=self.button_font)
+        starting_balance_label.grid(row=0,column=0, pady=15,padx=15)
+        starting_balance_input = ctk.CTkEntry(backtest_options_frame, corner_radius=10)
+        starting_balance_input.grid(row=0,column=1,padx=15,pady=15)
 
-        #have a button that hits backtest, which calls the backtest function, which will return a html and we will embed that,
-                                                                                                        #comamnd missing here
-        backtest_button = ctk.CTkButton(backtest_button_frame, text="Run Backtest", font=self.button_font, command=lambda : run_backtest(path_container['data_path'], path_container['model_path'],path_container['scaler_path'],path_container['columns_path']))
+        backtest_button_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        backtest_button_frame.pack(pady=15, side=TOP, fill=X, padx=20)
+
+        # Button to start backtesting
+        backtest_button = ctk.CTkButton(
+            backtest_button_frame, text="Run Backtest", font=self.button_font, 
+            command=lambda: start_backtest(self, path_container, backtest_progressBar, backtest_progressBar_label, predictions_label, self.button_font, backtest_result_frame, starting_balance_input.get())
+        )
         backtest_button.grid(row=0, column=0, padx=15, pady=15)
+
+        # Progress bar for backtesting
+        backtest_progressBar = ctk.CTkProgressBar(backtest_button_frame, orientation=HORIZONTAL, progress_color="#33cc33")
+        backtest_progressBar.grid(row=0, column=1, padx=15, pady=15)
+        backtest_progressBar.set(0)
+
+        # Label for progress bar
+        backtest_progressBar_label = ctk.CTkLabel(backtest_button_frame, text="", font=self.button_font)
+        backtest_progressBar_label.grid(row=0, column=2, padx=15, pady=15)
+
+        # Label for displaying predictions
+        predictions_label = ctk.CTkLabel(backtest_button_frame, text="", font=self.button_font)
+        predictions_label.grid(row=1, column=0, columnspan=3, padx=15, pady=15)
 
 
         #backtest results frame
-
         backtest_result_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
         backtest_result_frame.pack(pady=10, side=TOP, fill = BOTH, padx = 20)
 
@@ -457,7 +478,7 @@ class MainWindow(ctk.CTk):
         choose_scaler_text = ctk.CTkLabel(normalisation_frame, text="Choose Scaler")
         choose_scaler_text.grid(row=0,column=0,padx=15,pady=15)
         # provide option to upload own scaler file too, which will make it pop up the upload scaler button,
-        choose_scaler_combo = ctk.CTkComboBox(normalisation_frame, values=['MinMaxScaler', 'StandardScalar', 'Upload Scaler', 'No Scaler'], 
+        choose_scaler_combo = ctk.CTkComboBox(normalisation_frame, values=['MinMaxScaler', 'StandardScaler', 'Upload Scaler', 'No Scaler'], 
                                       command=lambda value: upload_scaler_prompt(value, normalisation_frame, path_container, self.button_font))
         choose_scaler_combo.grid(row=0,column=1,padx=15,pady=15)
 

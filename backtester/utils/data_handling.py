@@ -161,6 +161,7 @@ def process_and_save_data(path_container, columns, data_preview_frame, choose_sc
         original_data_path = path_container['data_path']
         if not original_data_path:
             raise Exception("Data not loaded")
+            
         
         data = pd.read_csv(original_data_path) if original_data_path.endswith('.csv') \
             else pd.read_excel(original_data_path) if original_data_path.endswith('.xlsx') \
@@ -168,6 +169,9 @@ def process_and_save_data(path_container, columns, data_preview_frame, choose_sc
 
         if 'open_time' in data.columns:
             data['open_time'] = pd.to_datetime(data['open_time'], unit='ms')
+
+        #dropna
+        data = data.dropna()
 
         start_date = start_date_picker.get_date()
         end_date = end_date_picker.get_date()
@@ -262,13 +266,13 @@ def display_data_preview(data, columns_frame):
     This function creates labels for each column in the data.
     """
     for col_index, column in enumerate(data.columns):
-        label = ctk.CTkLabel(columns_frame, text=column, width=20, padx=20, text_color="#FFFFFF")
+        label = ctk.CTkLabel(columns_frame, text=column, width=20, padx=20, text_color="#00000")
         label.grid(row=0, column=col_index)
         
         # Display a few rows of data
         num_rows_to_display = min(5, len(data))  # Show up to 5 rows
         for row_index in range(num_rows_to_display):
             value = data.iloc[row_index, col_index]
-            cell_label = ctk.CTkLabel(columns_frame, text=str(value), width=20, text_color="#FFFFFF")
+            cell_label = ctk.CTkLabel(columns_frame, text=str(value), width=20, text_color="#00000")
             cell_label.grid(row=row_index + 1, column=col_index, padx=20)
 

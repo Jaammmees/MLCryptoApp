@@ -1,4 +1,4 @@
-open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore,MACD,MACDSignal,MACDHist,RSI
+open_time,Open,High,Low,Close,Volume,close_time,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore,MACD,MACDSignal,MACDHist,RSI
 1710763200000,0.23,5.32,0.23,3.883,8388217.2,1710763259999,35452067.2875,75026,3894957.1,16608710.3667,0,,,,
 1710763260000,3.886,4.156,3.8,4.061,2710729.2,1710763319999,10825112.9148,28960,1416957.4,5669283.8253,0,,,,
 1710763320000,4.058,4.2,4.026,4.17,1764255.3,1710763379999,7263637.5495,18836,1096346.4,4521728.7191,0,,,,
