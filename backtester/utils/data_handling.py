@@ -266,13 +266,13 @@ def display_data_preview(data, columns_frame):
     This function creates labels for each column in the data.
     """
     for col_index, column in enumerate(data.columns):
-        label = ctk.CTkLabel(columns_frame, text=column, width=20, padx=20, text_color="#00000")
+        label = ctk.CTkLabel(columns_frame, text=column, width=20, padx=20, text_color="#000000")
         label.grid(row=0, column=col_index)
         
         # Display a few rows of data
         num_rows_to_display = min(5, len(data))  # Show up to 5 rows
         for row_index in range(num_rows_to_display):
             value = data.iloc[row_index, col_index]
-            cell_label = ctk.CTkLabel(columns_frame, text=str(value), width=20, text_color="#00000")
+            cell_label = ctk.CTkLabel(columns_frame, text=str(value), width=20, text_color="#000000")
             cell_label.grid(row=row_index + 1, column=col_index, padx=20)
 

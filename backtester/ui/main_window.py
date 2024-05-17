@@ -211,7 +211,7 @@ class MainWindow(ctk.CTk):
             entry_widget = event.widget
             current_text = entry_widget.get()  # This gets the current text from the entry
             #print(current_text)
-            self.layer_widgets[index]['params'] = int(current_text)
+            self.layer_widgets[index]['params'] = float(current_text)
             #print(self.layer_widgets)
 
     def load_build_model(self):
@@ -279,7 +279,10 @@ class MainWindow(ctk.CTk):
             #print(self.layer_widgets)
             for layer_info in self.layer_widgets:
                 layer_type = layer_info['type'].get()
-                layer_params = int(layer_info['params'])
+                if layer_type == "Dropout":
+                    layer_params = float(layer_info['params'])
+                else:
+                    layer_params = int(layer_info['params'])
                 return_seq = layer_info['return_seq'].get() if layer_type == 'LSTM' else False
                 layer_details.append({
                     'type': layer_type,
@@ -663,5 +666,49 @@ class MainWindow(ctk.CTk):
         for widget in self.main_frame.winfo_children():
             widget.destroy()
 
-        label = ctk.CTkLabel(self.main_frame, text = "realtime area")
-        label.pack(pady=20)
+        path_container = {}
+
+        #title
+        realTime_title = ctk.CTkLabel(self.main_frame, text="Real-Time Trading", font=self.title_font, text_color="#353535")
+        realTime_title.pack(pady=20,padx=25, side=TOP, anchor = "w")
+
+        #loading frame
+        loader_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
+        loader_frame.pack(pady=15, side=TOP, fill = X, padx = 20)
+
+        model_button = ctk.CTkButton(loader_frame, text="Load Model (.h5)", font=self.button_font, command=lambda : load_model_file(path_container, model_indicator))
+        model_indicator = ctk.CTkLabel(loader_frame, text="No Model Selected")
+        scaler_button = ctk.CTkButton(loader_frame, text="Load Scaler (.pkl)", font=self.button_font, command=lambda : load_scaler_file(path_container, scaler_indicator))
+        scaler_indicator = ctk.CTkLabel(loader_frame, text="No Scaler Model Selected")
+        columns_button = ctk.CTkButton(loader_frame, text="Load Columns (.pkl)", font=self.button_font, command=lambda : load_columns_file(path_container, columns_indicator))
+        columns_indicator = ctk.CTkLabel(loader_frame, text="No Columns File Selected")
+
+        #pack buttons side by side
+        model_button.grid(row=0, column = 0, padx=15, pady=15)
+        model_indicator.grid(row = 1, column = 0, padx=15, pady=15)
+        scaler_button.grid(row=0, column = 1, padx=15, pady=15)
+        scaler_indicator.grid(row = 1, column = 1, padx=15, pady=15)
+        columns_button.grid(row=0, column = 2, padx=15, pady=15)
+        columns_indicator.grid(row = 1, column = 2, padx=15, pady=15)
+
+        #choose crypto and have a start trading button
+
+        config_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        config_frame.pack(pady=15,side=TOP,fill=X, padx= 20)
+
+        select_crypto_label = ctk.CTkLabel(config_frame, text="Select Crypto", font=self.button_font)
+        select_crypto_label.grid(row=0,column=0, padx=15, pady=15)
+        select_crypto_input = ctk.CTkEntry(config_frame, corner_radius=10)
+        select_crypto_input.grid(row=0,column=1, padx=15, pady=15)
+
+        start_trading_button = ctk.CTkButton(config_frame, corner_radius=10)
+        start_trading_button.grid(row=0, column=2, padx=15, pady=15)
+        
+        #graph frame
+
+        graph_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        graph_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+
+
+
+
