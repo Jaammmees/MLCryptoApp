@@ -719,15 +719,19 @@ class MainWindow(ctk.CTk):
 
             if self.model is not None and self.scaler is not None and self.scaler_columns is not None:
                 # Query model for required input shape
-                _, sequence_length_in, sequence_length_out = self.model.input_shape
+                _, sequence_length_in, num_features = self.model.input_shape
                 
                 # Prepare data for prediction
                 X = self.prepare_data_for_prediction(self.df_full, sequence_length_in)
                 print(X)
                 if len(X) > 0:  # Check if there is data to predict
                     prediction = self.model.predict(X)
-                    predicted_price = prediction[0, -1, 0]  # Assuming the output is the price
-                    print("Prediction:", predicted_price)  # Print prediction for debugging
+                    inverse_transform_array = np.zeros((1, len(self.scaler_columns)))
+                    inverse_transform_array[0, 0] = prediction  # Assuming the price is the first column
+
+                    # Inverse transform
+                    predicted_price = self.scaler.inverse_transform(inverse_transform_array)[0, 0]
+                    print("Prediction:", predicted_price)
 
                     # Add predicted price to the DataFrame
                     last_timestamp = self.df_full.index[-1] + pd.Timedelta(minutes=1)
@@ -741,6 +745,8 @@ class MainWindow(ctk.CTk):
 
         except Exception as e:
             print(f"Error in update_plot: {e}")
+
+        self.after(1000, self.update_plot)  # Schedule next update after 1 second
 
     def initialise_trading(self, frame, interval, path_container):
         #load the model,
