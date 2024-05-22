@@ -4,6 +4,7 @@ import pandas as pd
 import os
 import pickle
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
+import joblib
 
 #used in multiple places --------------------
 def load_data_file(path_container, indicator):
@@ -17,14 +18,14 @@ def load_data_file(path_container, indicator):
     The function supports CSV, Excel, and Parquet file formats.
     """
 
-    data_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
+    data_file_path = filedialog.askopenfilename(initialdir="./data", filetypes=[("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
     if data_file_path:
         #print("Data loaded:", data_file_path)
         indicator.configure(text="Data " + os.path.basename(data_file_path) + " loaded")
         path_container['data_path'] = data_file_path
 
 #in data processing -------------------------
-def load_data_file_and_modify(path_container, columns, data_indicator, columns_frame, column_list_frame, delete_column):
+def load_data_file_and_modify(path_container, columns, data_indicator, columns_frame, column_list_frame, delete_column, start_date_picker, end_date_picker):
     """
     Loads data from a file and displays it in specified GUI frames with the option to delete columns.
 
@@ -39,7 +40,7 @@ def load_data_file_and_modify(path_container, columns, data_indicator, columns_f
     This function also handles exceptions if the file loading fails.
     """
 
-    data_file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
+    data_file_path = filedialog.askopenfilename(initialdir="./data", filetypes=[("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
     path_container['data_path'] = data_file_path
     if data_file_path:
         data_indicator.configure(text="Data " + os.path.basename(data_file_path) + " loaded")
@@ -47,6 +48,25 @@ def load_data_file_and_modify(path_container, columns, data_indicator, columns_f
             data = pd.read_csv(data_file_path) if data_file_path.endswith('.csv') \
                    else pd.read_excel(data_file_path) if data_file_path.endswith('.xlsx') \
                    else pd.read_parquet(data_file_path)
+            
+            # Standardize column names becuase backtesting.py looks for OHLCV
+            rename_dict = {
+                'close': 'Close',
+                'open': 'Open',
+                'high': 'High',
+                'low': 'Low',
+                'volume': 'Volume'
+            }
+            data.rename(columns={col: rename_dict[col] for col in rename_dict if col in data.columns}, inplace=True)
+
+            if 'open_time' in data.columns:
+                data['open_time'] = pd.to_datetime(data['open_time'], unit='ms')
+
+            # Set start and end dates in the date pickers
+            start_date = data['open_time'].min()
+            end_date = data['open_time'].max()
+            start_date_picker.set_date(start_date)
+            end_date_picker.set_date(end_date)
 
             for widget in columns_frame.winfo_children() + column_list_frame.winfo_children():
                 widget.destroy()
@@ -71,7 +91,7 @@ def display_data_columns(data, columns, columns_frame, column_list_frame, delete
     """
     
     for i, column in enumerate(data.columns):
-        print(column)
+        #print(column)
         label = ctk.CTkLabel(columns_frame, text=column, width=20, padx=20)
         label.grid(row=0, column=i)
         frame = ctk.CTkFrame(column_list_frame, height=50)
@@ -122,7 +142,7 @@ def display_data_preview(scaled_data, data_preview_frame):
     
 
 #processign and saving the data -------------------------
-def process_and_save_data(path_container, columns, data_preview_frame, choose_scaler_combo):
+def process_and_save_data(path_container, columns, data_preview_frame, choose_scaler_combo, start_date_picker, end_date_picker):
     """
     Processes the loaded data using a selected scaler and saves the scaled data.
 
@@ -141,34 +161,118 @@ def process_and_save_data(path_container, columns, data_preview_frame, choose_sc
         original_data_path = path_container['data_path']
         if not original_data_path:
             raise Exception("Data not loaded")
+            
         
         data = pd.read_csv(original_data_path) if original_data_path.endswith('.csv') \
             else pd.read_excel(original_data_path) if original_data_path.endswith('.xlsx') \
             else pd.read_parquet(original_data_path)
 
+        if 'open_time' in data.columns:
+            data['open_time'] = pd.to_datetime(data['open_time'], unit='ms')
+
+        #dropna
+        data = data.dropna()
+
+        start_date = start_date_picker.get_date()
+        end_date = end_date_picker.get_date()
+        #print(data.tail)
+        data['open_time'] = pd.to_datetime(data['open_time'])
+        data = data[(pd.Series(data['open_time']) >= pd.Timestamp(start_date)) & (pd.Series(data['open_time']) <= pd.Timestamp(end_date))]
+        #print(data.tail)
+        rename_dict = {
+            'close': 'Close',
+            'open': 'Open',
+            'high': 'High',
+            'low': 'Low',
+            'volume': 'Volume'
+        }
+        data.rename(columns={col: rename_dict[col] for col in rename_dict if col in data.columns}, inplace=True)
+
         current_columns = list(columns.keys())
         data = data[current_columns]
+        #assumes open_time exists,
+        data.set_index('open_time',inplace=True)
 
         scaler_choice = choose_scaler_combo.get()
         if scaler_choice == 'MinMaxScaler':
             scaler = MinMaxScaler()
-        elif scaler_choice == 'StandardScalar':
+        elif scaler_choice == 'StandardScaler':
             scaler = StandardScaler()
         elif scaler_choice == 'Upload Scaler' and 'scaler_path' in path_container:
             with open(path_container['scaler_path'], 'rb') as f:
                 scaler = pickle.load(f)
+        elif scaler_choice == 'No Scaler':
+            scaler = None
         else:
             raise Exception("No valid scaler selected or loaded")
-        
-        scaled_data = pd.DataFrame(scaler.fit_transform(data), columns=data.columns)
 
-        ask_fileName = ctk.CTkInputDialog(text = "Name for Processed Data", title = "New Data File")
+        if scaler is not None:
+            scaled_data = pd.DataFrame(scaler.fit_transform(data), columns=data.columns, index=data.index)
+        else:
+            scaled_data = data  # No scaling applied
+
+        ask_fileName = ctk.CTkInputDialog(text="Name for Processed Data", title="New Data File")
         if ask_fileName:
-            filepath = f'./processed_data/{ask_fileName.get_input()}.csv'
-            scaled_data.to_csv(filepath, index = False)
+            file_name = ask_fileName.get_input()
+            filepath = f'./processed_data/{file_name}.csv'
+            scaler_filepath = f'./scalers/{file_name}_scaler.pkl'
+            scaler_columns_filepath = f'./scalers/{file_name}_scaler_columns.pkl'
+
+            scaled_data.to_csv(filepath, index=True)
+            joblib.dump(scaler, scaler_filepath)
+            joblib.dump(data.columns.tolist(), scaler_columns_filepath)
 
         display_data_preview(scaled_data, data_preview_frame)  # Display the data in a simplified format
 
     except Exception as e:
         error_label = ctk.CTkLabel(data_preview_frame, text="Error: " + str(e), fg_color="#FFFFFF")
         error_label.pack(pady=15, padx=15, fill='both', expand=True)
+
+def load_data_file_and_preview(path_container, data_indicator, columns_frame):
+    """
+    Loads data from a file and displays it in specified GUI frames.
+
+    Args:
+    path_container (dict): Container for file paths.
+    data_indicator (ctk.CTkLabel): Label to indicate the status of data loading.
+    columns_frame (ctk.CTkFrame): Frame to display column labels.
+
+    This function also handles exceptions if the file loading fails.
+    """
+    data_file_path = filedialog.askopenfilename(initialdir="./data", filetypes=[("CSV files", "*.csv"), ("Excel files", "*.xlsx"), ("Parquet files", "*.parquet")])
+    path_container['data_path'] = data_file_path
+    if data_file_path:
+        data_indicator.configure(text="Data " + os.path.basename(data_file_path) + " loaded")
+        try:
+            if data_file_path.endswith('.csv'):
+                data = pd.read_csv(data_file_path)
+            elif data_file_path.endswith('.xlsx'):
+                data = pd.read_excel(data_file_path)
+            else:
+                data = pd.read_parquet(data_file_path)
+            display_data_preview(data, columns_frame)
+        except Exception as e:
+            data_indicator.configure(text=f"Failed to load data: {str(e)}")
+            messagebox.showerror("Error", f"Failed to load data: {str(e)}")
+
+def display_data_preview(data, columns_frame):
+    """
+    Displays data columns in the GUI.
+
+    Args:
+    data (DataFrame): Pandas DataFrame containing the data to display.
+    columns_frame (ctk.CTkFrame): Frame to display column labels.
+
+    This function creates labels for each column in the data.
+    """
+    for col_index, column in enumerate(data.columns):
+        label = ctk.CTkLabel(columns_frame, text=column, width=20, padx=20, text_color="#000000")
+        label.grid(row=0, column=col_index)
+        
+        # Display a few rows of data
+        num_rows_to_display = min(5, len(data))  # Show up to 5 rows
+        for row_index in range(num_rows_to_display):
+            value = data.iloc[row_index, col_index]
+            cell_label = ctk.CTkLabel(columns_frame, text=str(value), width=20, text_color="#000000")
+            cell_label.grid(row=row_index + 1, column=col_index, padx=20)
+

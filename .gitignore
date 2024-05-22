@@ -1,3 +1,7 @@
 /cryptos
 __pycache__
 /testing
+/backtester/models/*
+/backtester/processed_data/*
+/backtester/scalers/*
+/backtester/backtest_results/*
