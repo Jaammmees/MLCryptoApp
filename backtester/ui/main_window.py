@@ -9,16 +9,17 @@ from utils.display_model_summary import display_model_summary
 from utils.data_handling import load_data_file, load_data_file_and_modify, process_and_save_data, load_data_file_and_preview
 from utils.model_management import load_model_file, load_model_preview, start_training
 from utils.scaler_management import load_scaler_file, upload_scaler_prompt, load_columns_file
+from utils.sequence_processing import create_sequences
 from trading.historical import run_backtest, start_backtest
 from trading.real_time import fetch_data, plot_data
-import datetime
-import requests
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import mplfinance as mpf
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import customtkinter as ctk
+import joblib
+import numpy as np
 
 import threading
 
@@ -311,16 +312,17 @@ class MainWindow(ctk.CTk):
 
             hyperparameters = {
                 'sequence_length_in': sequence_length_in_entry.get(),
-                'sequence_length_out': sequence_length_out_entry.get(),
+                'sequence_length_out': 1, #for predicting one value
                 'model name' : model_name_entry.get(),
+                'num_features' : number_of_features_entry.get(),
             }
 
             return layer_details, hyperparameters
         
         def build_and_save_model():
             layer_info, hyper_params = collect_model_details()
-            # Assume input_shape is derived from 'sequence_length_in' and 'sequence_length_out'
-            input_shape = (int(hyper_params['sequence_length_in']), int(hyper_params['sequence_length_out']))
+            # Assume input_shape is derived from 'sequence_length_in' and 'num_features'
+            input_shape = (int(hyper_params['sequence_length_in']), int(hyper_params['num_features']))
             print(layer_info, hyper_params, input_shape)
             model = build_model(layer_info, input_shape)
             model.save('models/' + hyper_params['model name'] + '.h5')  # Save the model
@@ -384,6 +386,11 @@ class MainWindow(ctk.CTk):
         sequence_length_out_label.grid(row=2, column=0, padx=15, pady=15)
         sequence_length_out_entry = ctk.CTkEntry(select_parameters_frame)
         sequence_length_out_entry.grid(row=2, column=1, padx=15, pady=15)
+        # Num Features
+        number_of_features_label = ctk.CTkLabel(select_parameters_frame, text="Number of Features:")
+        number_of_features_label.grid(row=3, column=0, padx=15, pady=15)
+        number_of_features_entry = ctk.CTkEntry(select_parameters_frame)
+        number_of_features_entry.grid(row=3, column=1, padx=15, pady=15)
 
         # Submission: Button to confirm the setup and proceed to data preparation.
         model_build_button_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
@@ -567,6 +574,7 @@ class MainWindow(ctk.CTk):
                 print("yes")
                 self.model_input_shape = model.input_shape
                 self.model_output_shape = model.output_shape
+                print(self.model_input_shape, self.model_output_shape)
 
         #Data Upload:
         load_files_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
@@ -677,7 +685,7 @@ class MainWindow(ctk.CTk):
         train_model_button_frame, text="Start Training", font=self.button_font, 
         command=lambda: threading.Thread(
             target=start_training,
-            args=(path_container, validation_loss_label, self.model_input_shape[1], self.model_output_shape[1], optimiser_entry.get(), loss_function_entry.get(), metric_function_entry.get(), learning_rate_entry.get(), epochs_entry.get(), saved_model_label, self, training_progressBar, training_progressBar_label),
+            args=(path_container, validation_loss_label, self.model_input_shape[1], self.model_input_shape[2], optimiser_entry.get(), loss_function_entry.get(), metric_function_entry.get(), learning_rate_entry.get(), epochs_entry.get(), saved_model_label, self, training_progressBar, training_progressBar_label),
             daemon=True  # Ensures the thread will exit when the main program does
         ).start()
     )
@@ -686,14 +694,62 @@ class MainWindow(ctk.CTk):
     def stop_trading(self):
         self.is_running = False
 
+    def prepare_data_for_prediction(self, df, sequence_length_in):
+        # Select the last WINDOW_SIZE rows
+        data = df[-sequence_length_in:].copy()
+
+        # Ensure the data has the same columns as used in training
+        data = data[self.scaler_columns]
+
+        # Scale the data
+        data_scaled = self.scaler.transform(data)
+        data_scaled_df = pd.DataFrame(data_scaled, columns=self.scaler_columns)
+        print(data_scaled_df)
+        X = data_scaled_df.values.reshape((1, sequence_length_in, len(self.scaler_columns)))
+        return X
+
+
     def update_plot(self):
         if not self.is_running:
             return
 
-        self.current_index = plot_data(self.df_full, self.axes, self.canvas, self.WINDOW_SIZE, self.current_index)
-        self.after(1000, self.update_plot)  # Schedule next update after 1 second
+        try:
+            # Update the plot data
+            self.current_index = plot_data(self.df_full, self.axes, self.canvas, self.WINDOW_SIZE, self.current_index)
 
-    def initialise_data_and_plot(self, frame, interval):
+            if self.model is not None and self.scaler is not None and self.scaler_columns is not None:
+                # Query model for required input shape
+                _, sequence_length_in, sequence_length_out = self.model.input_shape
+                
+                # Prepare data for prediction
+                X = self.prepare_data_for_prediction(self.df_full, sequence_length_in)
+                print(X)
+                if len(X) > 0:  # Check if there is data to predict
+                    prediction = self.model.predict(X)
+                    predicted_price = prediction[0, -1, 0]  # Assuming the output is the price
+                    print("Prediction:", predicted_price)  # Print prediction for debugging
+
+                    # Add predicted price to the DataFrame
+                    last_timestamp = self.df_full.index[-1] + pd.Timedelta(minutes=1)
+                    new_row = [np.nan] * (len(self.df_full.columns) - 1) + [predicted_price]
+                    self.df_full.loc[last_timestamp] = new_row
+
+                    # Update the plot with new data
+                    plot_data(self.df_full, self.axes, self.canvas, self.WINDOW_SIZE, self.current_index)
+                else:
+                    print("No data available for prediction.")
+
+        except Exception as e:
+            print(f"Error in update_plot: {e}")
+
+    def initialise_trading(self, frame, interval, path_container):
+        #load the model,
+        self.model = load_model(path_container['model_path'])
+        self.model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae'])
+        #load the scaler and columns
+        self.scaler = joblib.load(path_container['scaler_path'])
+        self.scaler_columns = joblib.load(path_container['columns_path'])
+
         # Initialize the data and plot
         self.is_running = True  # Start the updating process
         self.df_full = fetch_data(interval=interval)  # Get data from the last 1.5 hours
@@ -772,7 +828,7 @@ class MainWindow(ctk.CTk):
         graph_inner_frame = ctk.CTkFrame(graph_frame, corner_radius=10)
         graph_inner_frame.pack(pady=15,side=TOP,fill=X,padx=20)
 
-        start_trading_button = ctk.CTkButton(config_frame, corner_radius=10, text = "Start Trading", command= lambda : self.initialise_data_and_plot(graph_inner_frame, self.selected_resolution))
+        start_trading_button = ctk.CTkButton(config_frame, corner_radius=10, text = "Start Trading", command= lambda : self.initialise_trading(graph_inner_frame, self.selected_resolution, path_container))
         start_trading_button.grid(row=1, column=0, padx=15, pady=15)
         
 

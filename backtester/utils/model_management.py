@@ -130,13 +130,23 @@ def start_training(path_container, validation_loss_label, sequence_in, sequence_
         validation_loss_label.configure(text="Invalid hyperparameters.")
         return
 
-    # Load and prepare data
+    # Load data
     data = pd.read_csv(path_container['data_path'])
-    
+
+    # Define sequence parameters
     sequence_length = int(sequence_in)
     sequence_out = int(sequence_out)
-    print("Taking in", sequence_length, "units of data to predict the next", sequence_out)
-    X, y = create_sequences(data, sequence_length, sequence_out, target_column='Close')
+
+    print(sequence_out)
+    print("Taking in", sequence_length, "units of data with", sequence_out, "features to predict the next 1 unit of close price")
+
+    # Extract column names excluding the target column
+    include_columns = [col for col in data.columns if col != 'Close' and col != 'open_time']
+    # Create sequences
+    X, y = create_sequences(data, sequence_length, sequence_out, target_column='Close', include_columns=include_columns)
+
+    print(X.shape)  # Expected shape: (num_samples, sequence_length, num_features)
+    print(y.shape)  # Expected shape: (num_samples,)
 
     # Split data into training and testing
     split_index = int(len(X) * 0.8)
