@@ -32,7 +32,7 @@ def plot_data(df, axes, canvas, window_size, current_index):
     if current_index < len(df):
         axes[0].clear()
         axes[1].clear()
-        current_df = df.iloc[current_index - window_size:current_index]
+        current_df = df.iloc[max(0, current_index - window_size):current_index]
         mpf.plot(current_df, ax=axes[0], volume=axes[1], type='candle', style='yahoo')
         canvas.draw()
         current_index += 1
