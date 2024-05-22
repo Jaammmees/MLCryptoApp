@@ -10,6 +10,15 @@ from utils.data_handling import load_data_file, load_data_file_and_modify, proce
 from utils.model_management import load_model_file, load_model_preview, start_training
 from utils.scaler_management import load_scaler_file, upload_scaler_prompt, load_columns_file
 from trading.historical import run_backtest, start_backtest
+from trading.real_time import fetch_data, plot_data
+import datetime
+import requests
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import mplfinance as mpf
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import customtkinter as ctk
 
 import threading
 
@@ -46,6 +55,10 @@ class MainWindow(ctk.CTk):
         self.title_font = ctk.CTkFont(family = "Helvetica", size = 40, weight = "bold")
         self.button_font = ctk.CTkFont(family = "Helvetica", size = 15, weight = "bold")
         self.combo_box_font = ctk.CTkFont(family = "Helvetica", size = 20, weight = "bold")
+
+        self.WINDOW_SIZE = 60  # Number of candlesticks to display
+        self.current_index = self.WINDOW_SIZE
+        self.is_running = False
 
         self.setup_sidebar()
 
@@ -121,6 +134,9 @@ class MainWindow(ctk.CTk):
         - backtest_button (ctk.CTkButton): Button to start the backtesting process (requires command linking).
         - backtest_result_frame (ctk.CTkFrame): Frame where backtest results would be displayed.
         """
+
+        self.is_running = False  # stop the realtime process (very hacky i know)
+
         #wipe previous frame
         for widget in self.main_frame.winfo_children():
             widget.destroy()
@@ -215,6 +231,9 @@ class MainWindow(ctk.CTk):
             #print(self.layer_widgets)
 
     def load_build_model(self):
+
+        self.is_running = False  # stop the realtime process (very hacky i know)
+
         #wipe previous frame
         for widget in self.main_frame.winfo_children():
             widget.destroy()
@@ -399,6 +418,9 @@ class MainWindow(ctk.CTk):
         5. Provide options for data normalization and scaling.
         6. Prepare and display the interface for initiating the data processing.
         """
+
+        self.is_running = False  # stop the realtime process (very hacky i know)
+
         #wipe previous frame
         for widget in self.main_frame.winfo_children():
             widget.destroy()
@@ -524,6 +546,8 @@ class MainWindow(ctk.CTk):
             - Initiate the training process.
         3. Display dynamic feedback on the model and data status, and provide a preview area for generated sequences.
         """
+
+        self.is_running = False  # stop the realtime process (very hacky i know)
 
         #wipe previous frame
         for widget in self.main_frame.winfo_children():
@@ -659,9 +683,38 @@ class MainWindow(ctk.CTk):
     )
         train_model_button.grid(row=0,column=0,padx=15,pady=15)
 
-        
+    def stop_trading(self):
+        self.is_running = False
+
+    def update_plot(self):
+        if not self.is_running:
+            return
+
+        self.current_index = plot_data(self.df_full, self.axes, self.canvas, self.WINDOW_SIZE, self.current_index)
+        self.after(1000, self.update_plot)  # Schedule next update after 1 second
+
+    def initialise_data_and_plot(self, frame, interval):
+        # Initialize the data and plot
+        self.is_running = True  # Start the updating process
+        self.df_full = fetch_data(interval=interval)  # Get data from the last 1.5 hours
+        self.fig, self.axes = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(10, 8))
+        self.canvas = FigureCanvasTkAgg(self.fig, master=frame)
+        self.canvas.get_tk_widget().pack(fill="both", expand=True)
+        self.update_plot()
+
+    def select_resolution(self, resolution):
+        self.selected_resolution = resolution
+        self.update_resolution_buttons()
+
+    def update_resolution_buttons(self):
+        for res, button in self.resolution_buttons.items():
+            if res == self.selected_resolution:
+                button.configure(fg_color="#45b057")  # Change color to indicate selection
+            else:
+                button.configure(fg_color="#3a7ebf")  # Reset to default color
 
     def load_realtime(self):
+        self.is_running = False  # stop the realtime process (very hacky i know)
         #wipe previous frame
         for widget in self.main_frame.winfo_children():
             widget.destroy()
@@ -691,8 +744,9 @@ class MainWindow(ctk.CTk):
         columns_button.grid(row=0, column = 2, padx=15, pady=15)
         columns_indicator.grid(row = 1, column = 2, padx=15, pady=15)
 
-        #choose crypto and have a start trading button
+        self.selected_resolution = '1m'
 
+        #choose crypto and have a start trading button\
         config_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
         config_frame.pack(pady=15,side=TOP,fill=X, padx= 20)
 
@@ -701,14 +755,28 @@ class MainWindow(ctk.CTk):
         select_crypto_input = ctk.CTkEntry(config_frame, corner_radius=10)
         select_crypto_input.grid(row=0,column=1, padx=15, pady=15)
 
-        start_trading_button = ctk.CTkButton(config_frame, corner_radius=10)
-        start_trading_button.grid(row=0, column=2, padx=15, pady=15)
-        
-        #graph frame
+                # Resolution buttons
+        resolutions = ['1m', '5m', '15m', '30m', '1h']
+        self.resolution_buttons = {}
+        for i, resolution in enumerate(resolutions):
+            button = ctk.CTkButton(config_frame, text=resolution, font=self.button_font,
+                                   command=lambda res=resolution: self.select_resolution(res), width=50)
+            button.grid(row=0, column=i+2, padx=5, pady=5)
+            self.resolution_buttons[resolution] = button
 
+        self.update_resolution_buttons()
+
+        #graph frame
         graph_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
         graph_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+        graph_inner_frame = ctk.CTkFrame(graph_frame, corner_radius=10)
+        graph_inner_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+
+        start_trading_button = ctk.CTkButton(config_frame, corner_radius=10, text = "Start Trading", command= lambda : self.initialise_data_and_plot(graph_inner_frame, self.selected_resolution))
+        start_trading_button.grid(row=1, column=0, padx=15, pady=15)
+        
 
 
+        
 
 
