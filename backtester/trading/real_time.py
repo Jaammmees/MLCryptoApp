@@ -5,6 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import mplfinance as mpf
+import mplcursors
 
 def fetch_data(hours_back=1.5, symbol='BTCUSDT', interval='1m'):
     API_URL = 'https://api.binance.com/api/v3/klines'
@@ -50,12 +51,25 @@ def fetch_current_minute_data(symbol='BTCUSDT', interval='1m'):
     df = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
     return df
 
-def plot_data(df, axes, canvas, window_size, current_index):
-    if current_index < len(df):
-        axes[0].clear()
-        axes[1].clear()
-        current_df = df.iloc[current_index - window_size:current_index]
-        mpf.plot(current_df, ax=axes[0], volume=axes[1], type='candle', style='yahoo')
-        canvas.draw()
-        current_index += 1
-    return current_index
+def plot_data(df, axes, canvas, window_size):
+    axes[0].clear()
+    axes[1].clear()
+    current_df = df.iloc[-window_size:]
+
+    # Add annotation for the latest OHLCV data
+    latest = current_df.iloc[-1]
+    legend_text = (
+        f"Open: {latest['Open']:.2f}\n"
+        f"High: {latest['High']:.2f}\n"
+        f"Low: {latest['Low']:.2f}\n"
+        f"Close: {latest['Close']:.2f}\n"
+        f"Volume: {latest['Volume']:.2f}"
+    )
+    props = dict(boxstyle='round', facecolor='white', alpha=0.5, edgecolor='black')
+    axes[0].text(0.90, 0.97, legend_text, transform=axes[0].transAxes, fontsize='small',
+                 verticalalignment='top', bbox=props)
+
+    mpf.plot(current_df, ax=axes[0], volume=axes[1], type='candle', style='yahoo')
+    canvas.draw()
+
+

@@ -11,7 +11,7 @@ from utils.model_management import load_model_file, load_model_preview, start_tr
 from utils.scaler_management import load_scaler_file, upload_scaler_prompt, load_columns_file
 from utils.sequence_processing import create_sequences
 from trading.historical import run_backtest, start_backtest
-from trading.real_time import fetch_data, plot_data
+from trading.real_time import fetch_data, fetch_current_minute_data, plot_data
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -704,7 +704,7 @@ class MainWindow(ctk.CTk):
         # Scale the data
         data_scaled = self.scaler.transform(data)
         data_scaled_df = pd.DataFrame(data_scaled, columns=self.scaler_columns)
-        print(data_scaled_df)
+        #print(data_scaled_df)
         X = data_scaled_df.values.reshape((1, sequence_length_in, len(self.scaler_columns)))
         return X
 
@@ -714,39 +714,60 @@ class MainWindow(ctk.CTk):
             return
 
         try:
-            # Update the plot data
-            self.current_index = plot_data(self.df_full, self.axes, self.canvas, self.WINDOW_SIZE, self.current_index)
+            # Fetch the latest minute data
+            new_data = fetch_current_minute_data()
 
-            if self.model is not None and self.scaler is not None and self.scaler_columns is not None:
-                # Query model for required input shape
-                _, sequence_length_in, num_features = self.model.input_shape
-                
-                # Prepare data for prediction
-                X = self.prepare_data_for_prediction(self.df_full, sequence_length_in)
-                print(X)
-                if len(X) > 0:  # Check if there is data to predict
-                    prediction = self.model.predict(X)
-                    inverse_transform_array = np.zeros((1, len(self.scaler_columns)))
-                    inverse_transform_array[0, 0] = prediction  # Assuming the price is the first column
+            # If there is no new data, do nothing
+            if new_data.empty:
+                print("No new data fetched.")
+            else:
+                last_timestamp = self.df_full.index[-1]
+                new_timestamp = new_data.index[0]
 
-                    # Inverse transform
-                    predicted_price = self.scaler.inverse_transform(inverse_transform_array)[0, 0]
-                    print("Prediction:", predicted_price)
-
-                    # Add predicted price to the DataFrame
-                    last_timestamp = self.df_full.index[-1] + pd.Timedelta(minutes=1)
-                    new_row = [np.nan] * (len(self.df_full.columns) - 1) + [predicted_price]
-                    self.df_full.loc[last_timestamp] = new_row
-
-                    # Update the plot with new data
-                    plot_data(self.df_full, self.axes, self.canvas, self.WINDOW_SIZE, self.current_index)
+                if new_timestamp > last_timestamp:
+                    # If it's a new minute, append the new row
+                    self.df_full = pd.concat([self.df_full, new_data])
+                    self.current_index += 1
                 else:
-                    print("No data available for prediction.")
+                    # If it's the same minute, update the last row
+                    self.df_full.iloc[-1] = new_data.iloc[0]
+
+            # Update the plot data
+            
+            plot_data(self.df_full, self.axes, self.canvas, 30)
+
+            # if self.model is not None and self.scaler is not None and self.scaler_columns is not None:
+            #     # Query model for required input shape
+            #     _, sequence_length_in, num_features = self.model.input_shape
+                
+            #     # Prepare data for prediction
+            #     X = self.prepare_data_for_prediction(self.df_full, sequence_length_in)
+            #     #print(X)
+            #     if len(X) > 0:  # Check if there is data to predict
+                    
+            #         prediction = self.model.predict(X)
+            #         inverse_transform_array = np.zeros((1, len(self.scaler_columns)))
+            #         inverse_transform_array[0, 0] = prediction  # Assuming the price is the first column
+
+            #         # Inverse transform
+            #         predicted_price = self.scaler.inverse_transform(inverse_transform_array)[0, 0]
+            #         print("Prediction:", predicted_price)
+
+            #         # # Add predicted price to the DataFrame
+            #         # last_timestamp = self.df_full.index[-1] + pd.Timedelta(minutes=1)
+            #         # new_row = [np.nan] * (len(self.df_full.columns) - 1) + [predicted_price]
+            #         # self.df_full.loc[last_timestamp] = new_row
+
+            #         # Update the plot with new data
+            #         plot_data(self.df_full, self.axes, self.canvas, 30)
+            #     else:
+            #         print("No data available for prediction.")
 
         except Exception as e:
             print(f"Error in update_plot: {e}")
 
         self.after(1000, self.update_plot)  # Schedule next update after 1 second
+
 
     def initialise_trading(self, frame, interval, path_container):
         #load the model,
@@ -759,7 +780,7 @@ class MainWindow(ctk.CTk):
         # Initialize the data and plot
         self.is_running = True  # Start the updating process
         self.df_full = fetch_data(interval=interval)  # Get data from the last 1.5 hours
-        self.fig, self.axes = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(10, 8))
+        self.fig, self.axes = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(10, 8), sharex = True)
         self.canvas = FigureCanvasTkAgg(self.fig, master=frame)
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
         self.update_plot()

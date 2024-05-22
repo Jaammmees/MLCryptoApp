@@ -13,7 +13,7 @@ def load_scaler_file(path_container, indicator):
     This function supports .pkl file formats for scalers, typically used in machine learning for data normalization or standardization.
     """
     
-    scaler_file_path = filedialog.askopenfilename(filetypes=[("Pickle files", "*.pkl")])
+    scaler_file_path = filedialog.askopenfilename(initialdir="./scalers", filetypes=[("Pickle files", "*.pkl")])
     if scaler_file_path:
         #print("Scaler loaded:", scaler_file_path)
         indicator.configure(text="Model Scaler " + os.path.basename(scaler_file_path) + " loaded")
@@ -30,7 +30,7 @@ def load_columns_file(path_container, indicator):
     This function supports .pkl file formats for scalers, typically used in machine learning for data normalization or standardization.
     """
     
-    columns_file_path = filedialog.askopenfilename(filetypes=[("Pickle files", "*.pkl")])
+    columns_file_path = filedialog.askopenfilename(initialdir="./scalers", filetypes=[("Pickle files", "*.pkl")])
     if columns_file_path:
         #print("Scaler loaded:", scaler_file_path)
         indicator.configure(text="Columns File " + os.path.basename(columns_file_path) + " loaded")
