@@ -11,7 +11,7 @@ from utils.model_management import load_model_file, load_model_preview, start_tr
 from utils.scaler_management import load_scaler_file, upload_scaler_prompt, load_columns_file
 from utils.sequence_processing import create_sequences
 from trading.historical import run_backtest, start_backtest
-from trading.real_time import fetch_data, fetch_current_minute_data, plot_data
+from trading.real_time import fetch_data, fetch_current_minute_data, plot_data, extend_future_data
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -20,6 +20,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import customtkinter as ctk
 import joblib
 import numpy as np
+import datetime
 
 import threading
 
@@ -694,9 +695,9 @@ class MainWindow(ctk.CTk):
     def stop_trading(self):
         self.is_running = False
 
-    def prepare_data_for_prediction(self, df, sequence_length_in):
+    def prepare_data_for_prediction(self, df, sequence_length_in, minutes_ahead):
         # Select the last WINDOW_SIZE rows
-        data = df[-sequence_length_in:].copy()
+        data = df.iloc[-(sequence_length_in + minutes_ahead):-minutes_ahead].copy()
 
         # Ensure the data has the same columns as used in training
         data = data[self.scaler_columns]
@@ -706,10 +707,11 @@ class MainWindow(ctk.CTk):
         data_scaled_df = pd.DataFrame(data_scaled, columns=self.scaler_columns)
         #print(data_scaled_df)
         X = data_scaled_df.values.reshape((1, sequence_length_in, len(self.scaler_columns)))
+        print(X)
         return X
 
 
-    def update_plot(self):
+    def update_plot(self, minutes_ahead):
         if not self.is_running:
             return
 
@@ -721,58 +723,66 @@ class MainWindow(ctk.CTk):
             if new_data.empty:
                 print("No new data fetched.")
             else:
-                last_timestamp = self.df_full.index[-1]
+
+                print("Fetched new data:", new_data)
+
+                # Append new_data to the DataFrame, keeping the buffer of NaNs
+                last_actual_index = -minutes_ahead - 1
                 new_timestamp = new_data.index[0]
 
-                if new_timestamp > last_timestamp:
-                    # If it's a new minute, append the new row
-                    self.df_full = pd.concat([self.df_full, new_data])
-                    self.current_index += 1
-                else:
-                    # If it's the same minute, update the last row
-                    self.df_full.iloc[-1] = new_data.iloc[0]
+                if new_timestamp > self.df_full.index[last_actual_index]:
+                    # It's a new minute, shift the buffer down and append the new data
+                    last_index = self.df_full.index[-1]
+                    next_index = last_index + pd.Timedelta(minutes=1)
 
-            # Update the plot data
-            
-            plot_data(self.df_full, self.axes, self.canvas, 30)
+                    # Create a DataFrame with a single row of NaN values
+                    buffer_row = pd.DataFrame([[np.nan] * len(self.df_full.columns)], columns=self.df_full.columns, index=[next_index])
+                    self.df_full = pd.concat([self.df_full, buffer_row])
 
-            # if self.model is not None and self.scaler is not None and self.scaler_columns is not None:
-            #     # Query model for required input shape
-            #     _, sequence_length_in, num_features = self.model.input_shape
-                
-            #     # Prepare data for prediction
-            #     X = self.prepare_data_for_prediction(self.df_full, sequence_length_in)
-            #     #print(X)
-            #     if len(X) > 0:  # Check if there is data to predict
+                    # Update the last actual row with the new data
+                self.df_full.loc[self.df_full.index[last_actual_index], ['Open', 'High', 'Low', 'Close', 'Volume']] = new_data.iloc[0]
+
+                print("Latest actual candlestick data:", self.df_full.iloc[last_actual_index])
+
+                # Update the plot data
+                prediction_time = None
+                prediction_price = None
+
+                if self.model is not None and self.scaler is not None and self.scaler_columns is not None:
+                    # Query model for required input shape
+                    _, sequence_length_in, num_features = self.model.input_shape
                     
-            #         prediction = self.model.predict(X)
-            #         inverse_transform_array = np.zeros((1, len(self.scaler_columns)))
-            #         inverse_transform_array[0, 0] = prediction  # Assuming the price is the first column
+                    # Prepare data for prediction
+                    X = self.prepare_data_for_prediction(self.df_full, sequence_length_in-minutes_ahead, minutes_ahead)
+                    if len(X) > 0:  # Check if there is data to predict
+                        prediction = self.model.predict(X)
+                        inverse_transform_array = np.zeros((1, len(self.scaler_columns)))
+                        inverse_transform_array[0, 0] = prediction  # Assuming the price is the first column
 
-            #         # Inverse transform
-            #         predicted_price = self.scaler.inverse_transform(inverse_transform_array)[0, 0]
-            #         print("Prediction:", predicted_price)
+                        # Inverse transform
+                        predicted_price = self.scaler.inverse_transform(inverse_transform_array)[0, 0]
+                        print("Prediction:", predicted_price)
 
-            #         # # Add predicted price to the DataFrame
-            #         # last_timestamp = self.df_full.index[-1] + pd.Timedelta(minutes=1)
-            #         # new_row = [np.nan] * (len(self.df_full.columns) - 1) + [predicted_price]
-            #         # self.df_full.loc[last_timestamp] = new_row
+                        # Set prediction time (5 minutes ahead)
+                        prediction_time = self.df_full.index[-1]
+                        #for testing ,doesnt actual represent real prediction
+                        prediction_price = self.df_full.iloc[-minutes_ahead-1]['Close']
+                        print(f"Prediction time: {prediction_time}, Prediction price: {prediction_price}")
 
-            #         # Update the plot with new data
-            #         plot_data(self.df_full, self.axes, self.canvas, 30)
-            #     else:
-            #         print("No data available for prediction.")
+                print(self.df_full.tail(minutes_ahead+1))
+                # Update the plot with new data and prediction
+                plot_data(self.df_full, self.axes, self.canvas, 30, prediction_time, prediction_price, minutes_ahead)
 
         except Exception as e:
             print(f"Error in update_plot: {e}")
 
-        self.after(1000, self.update_plot)  # Schedule next update after 1 second
+        self.after(1000, lambda : self.update_plot(minutes_ahead))  # Schedule next update after 1 second
 
 
-    def initialise_trading(self, frame, interval, path_container):
+    def initialise_trading(self, frame, interval, path_container, minutes_ahead):
         #load the model,
         self.model = load_model(path_container['model_path'])
-        self.model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae'])
+        #self.model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae'])
         #load the scaler and columns
         self.scaler = joblib.load(path_container['scaler_path'])
         self.scaler_columns = joblib.load(path_container['columns_path'])
@@ -780,10 +790,11 @@ class MainWindow(ctk.CTk):
         # Initialize the data and plot
         self.is_running = True  # Start the updating process
         self.df_full = fetch_data(interval=interval)  # Get data from the last 1.5 hours
+        self.df_full = extend_future_data(self.df_full, minutes_ahead)
         self.fig, self.axes = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(10, 8), sharex = True)
         self.canvas = FigureCanvasTkAgg(self.fig, master=frame)
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
-        self.update_plot()
+        self.update_plot(minutes_ahead)
 
     def select_resolution(self, resolution):
         self.selected_resolution = resolution
@@ -849,13 +860,19 @@ class MainWindow(ctk.CTk):
 
         self.update_resolution_buttons()
 
+        #Select how many minutes ahead you want to predict how many predictions every X minute, 
+        minutes_ahead_label = ctk.CTkLabel(config_frame, text="Minutes Ahead to Predict", font=self.button_font)
+        minutes_ahead_label.grid(row=0,column=7, padx=15, pady=15)
+        minutes_ahead_input = ctk.CTkEntry(config_frame, corner_radius=10)
+        minutes_ahead_input.grid(row=0,column=8, padx=15, pady=15)
+
         #graph frame
         graph_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
         graph_frame.pack(pady=15,side=TOP,fill=X,padx=20)
         graph_inner_frame = ctk.CTkFrame(graph_frame, corner_radius=10)
         graph_inner_frame.pack(pady=15,side=TOP,fill=X,padx=20)
 
-        start_trading_button = ctk.CTkButton(config_frame, corner_radius=10, text = "Start Trading", command= lambda : self.initialise_trading(graph_inner_frame, self.selected_resolution, path_container))
+        start_trading_button = ctk.CTkButton(config_frame, corner_radius=10, text = "Start Trading", command= lambda : self.initialise_trading(graph_inner_frame, self.selected_resolution, path_container, int(minutes_ahead_input.get())))
         start_trading_button.grid(row=1, column=0, padx=15, pady=15)
         
 
