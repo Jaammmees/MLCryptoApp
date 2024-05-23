@@ -2,10 +2,9 @@
 import datetime
 import requests
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import mplfinance as mpf
-import mplcursors
+import numpy as np
+import pytz
 
 def fetch_data(hours_back=1.5, symbol='BTCUSDT', interval='1m'):
     API_URL = 'https://api.binance.com/api/v3/klines'
@@ -24,7 +23,7 @@ def fetch_data(hours_back=1.5, symbol='BTCUSDT', interval='1m'):
         'Close Time', 'Quote Asset Volume', 'Number of Trades',
         'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'
     ])
-    df['Open Time'] = pd.to_datetime(df['Open Time'], unit='ms')
+    df['Open Time'] = pd.to_datetime(df['Open Time'], unit='ms').dt.tz_localize('UTC').dt.tz_convert('Australia/Adelaide')
     df.set_index('Open Time', inplace=True)
     df = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
     df['Prediction'] = float('nan')  # Initialize the prediction column
@@ -47,13 +46,14 @@ def fetch_current_minute_data(symbol='BTCUSDT', interval='1m'):
         'Close Time', 'Quote Asset Volume', 'Number of Trades',
         'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'
     ])
-    df['Open Time'] = pd.to_datetime(df['Open Time'], unit='ms')
+    df['Open Time'] = pd.to_datetime(df['Open Time'], unit='ms').dt.tz_localize('UTC').dt.tz_convert('Australia/Adelaide')
     df.set_index('Open Time', inplace=True)
     df = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
     df['Prediction'] = float('nan')  # Initialize the prediction column
     return df
 
 def plot_data(df, axes, canvas, window_size, prediction_time, prediction_price, minutes_ahead):
+    df.index = pd.to_datetime(df.index)
     axes[0].clear()
     axes[1].clear()
     current_df = df.iloc[-window_size:]
@@ -70,18 +70,52 @@ def plot_data(df, axes, canvas, window_size, prediction_time, prediction_price, 
         f"Latest Prediction : {latest_prediction['Prediction']:.2f}"
     )
     props = dict(boxstyle='round', facecolor='white', alpha=0.5, edgecolor='black')
-    axes[0].text(0.90, 0.97, legend_text, transform=axes[0].transAxes, fontsize='small',
+    axes[0].text(0.80, 0.97, legend_text, transform=axes[0].transAxes, fontsize='small',
                  verticalalignment='top', bbox=props)
 
     if prediction_time is not None and prediction_price is not None:
-        df.loc[prediction_time, 'Prediction'] = prediction_price
+        #only make one prediction for that time index, 
+        if np.isnan(df.loc[prediction_time, 'Prediction']):
+            df.loc[prediction_time, 'Prediction'] = prediction_price
 
-    apd = mpf.make_addplot(current_df['Prediction'], ax = axes[0], type='scatter', markersize=50, color='green')
-    mpf.plot(current_df, ax=axes[0], volume=axes[1], type='candle', style='yahoo', addplot=apd)
+    most_recent_close = current_df.iloc[-minutes_ahead-1]['Close']
+    most_recent_time = current_df.index[-minutes_ahead-1]
+
+    apd = mpf.make_addplot(current_df['Prediction'], ax = axes[0], type='scatter', markersize=50, color='blue')
+    hlines = [most_recent_close]
+    vlines = [most_recent_time]
+
+    mpf.plot(
+        current_df,
+        ax=axes[0],
+        volume=axes[1],
+        type='candle',
+        style='yahoo',
+        addplot=apd,
+        hlines=dict(hlines=hlines, linestyle='--', linewidths=1, alpha=0.7, colors='red'),
+        vlines=dict(vlines=vlines, linestyle='--', linewidths=1, alpha=0.7, colors='blue'),
+        tight_layout=True,
+        returnfig=True,
+    )
     ymin, ymax = current_df[['Low', 'High']].min().min(), current_df[['Low', 'High']].max().max()
     axes[0].set_ylim(ymin - (ymax - ymin) * 0.1, ymax + (ymax - ymin) * 0.1)
 
+
+
+    #cursors, yet to work smoothly
+    # cursor = mplcursors.cursor(axes[0].collections, hover=True)
+    # cursor.connect("add", lambda sel: sel.annotation.set_text(
+    #     f"Date: {current_df.index[sel.index]}\n"
+    #     f"Open: {current_df['Open'].iloc[sel.index]:.2f}\n"
+    #     f"High: {current_df['High'].iloc[sel.index]:.2f}\n"
+    #     f"Low: {current_df['Low'].iloc[sel.index]:.2f}\n"
+    #     f"Close: {current_df['Close'].iloc[sel.index]:.2f}\n"
+    #     f"Volume: {current_df['Volume'].iloc[sel.index]:.2f}\n"
+    #     f"Prediction: {current_df['Prediction'].iloc[sel.index]:.2f}"
+    # ))
+
     canvas.draw()
+
 
 def extend_future_data(df, future_minutes):
     last_time = df.index[-1]
