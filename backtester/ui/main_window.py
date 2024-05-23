@@ -794,8 +794,28 @@ class MainWindow(ctk.CTk):
         self.is_running = True  # Start the updating process
         self.df_full = fetch_data(interval=interval)  # Get data from the last 1.5 hours
         self.df_full = extend_future_data(self.df_full, minutes_ahead)
-        self.fig, self.axes = mpf.plot(self.df_full,type='candle',style='yahoo',volume=True,returnfig=True,figscale=1.5,figratio=(16, 9), title="Live Trading")
-        self.fig.subplots_adjust(top=0.95, bottom=0.05, left=0.05, right=0.95, wspace=0.2, hspace=0.2)
+        # Create the additional plot for volume
+        # volume_ap = mpf.make_addplot(
+        #     self.df_full['Volume'],
+        #     type='bar',
+        #     panel=1,
+        #     color='blue',
+        #     alpha=0.3,  # Make the volume plot a bit transparent
+        #     secondary_y=False
+        # )
+
+        self.fig, self.axes = mpf.plot(
+            self.df_full,
+            type='candle',
+            style='yahoo',
+            volume=True,
+            returnfig=True,
+            figscale=1.5,
+            figratio=(16, 9),
+            title="Live Trading",
+            scale_padding={'left': 0.05, 'right': 0.9, 'top': 0.3, 'bottom': 0.7},
+            panel_ratios=(5, 1)  # Ensure the ratio between the main chart and the volume chart is appropriate
+        )
         self.canvas = FigureCanvasTkAgg(self.fig, master=frame)
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
         self.update_plot(minutes_ahead)

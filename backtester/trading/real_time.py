@@ -56,7 +56,7 @@ def plot_data(df, axes, canvas, window_size, prediction_time, prediction_price, 
     df.index = pd.to_datetime(df.index)
     axes[0].clear()
     axes[1].clear()
-    current_df = df.iloc[-window_size:]
+    current_df = df
 
     # Add annotation for the latest OHLCV data
     latest = current_df.iloc[-minutes_ahead-1]
@@ -84,6 +84,18 @@ def plot_data(df, axes, canvas, window_size, prediction_time, prediction_price, 
     apd = mpf.make_addplot(current_df['Prediction'], ax = axes[0], type='scatter', markersize=50, color='blue')
     hlines = [most_recent_close]
     vlines = [most_recent_time]
+    #print(current_df['Volume'].tail(6))
+    # volume_ap = mpf.make_addplot(
+    #     current_df['Volume'],
+    #     ax = axes[0],
+    #     type='bar',
+    #     panel=1,
+    #     color='blue',
+    #     alpha=0.3,  # Make the volume plot a bit transparent
+    #     secondary_y=False,
+    # )
+
+    print(current_df['Volume'].tail(10))
 
     mpf.plot(
         current_df,
@@ -95,8 +107,11 @@ def plot_data(df, axes, canvas, window_size, prediction_time, prediction_price, 
         hlines=dict(hlines=hlines, linestyle='--', linewidths=1, alpha=0.7, colors='red'),
         vlines=dict(vlines=vlines, linestyle='--', linewidths=1, alpha=0.7, colors='blue'),
         tight_layout=True,
-        returnfig=True,
+        panel_ratios=(3, 1)
     )
+
+
+
     ymin, ymax = current_df[['Low', 'High']].min().min(), current_df[['Low', 'High']].max().max()
     axes[0].set_ylim(ymin - (ymax - ymin) * 0.1, ymax + (ymax - ymin) * 0.1)
 
