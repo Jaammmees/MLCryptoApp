@@ -1,12 +1,12 @@
 from tkinter import filedialog
 import pandas as pd
 import os
-from tensorflow.keras.models import load_model
 from keras.callbacks import Callback
-import tensorflow as tf
-from tensorflow.keras.optimizers import Adam, SGD, RMSprop
+from keras.optimizers import Adam, SGD, RMSprop
+from keras.models import Sequential, load_model
+from keras.layers import LSTM, Dense, Dropout, Input
 import customtkinter as ctk
-import threading
+from utils.display_model_summary import display_model_summary
 
 from utils.sequence_processing import create_sequences
 
@@ -187,3 +187,161 @@ def start_training(path_container, validation_loss_label, sequence_in, sequence_
     
     # Optionally save the trained model
     
+#------------------------------------------------------Building the Model--------------------------------------
+
+def update_layer_type(layer_widgets, value, index):
+
+    """
+    Update the layer type at a specific index and show/hide the return sequences checkbox based on if it is an LSTM or not.
+
+    Args:
+        layer_widgets (list): List of layer widgets.
+        value (str): Selected layer type.
+        index (int): Index of the layer to update.
+    """
+
+    # Update the layer type at specific index
+    layer_widgets[index]['type'].set(value)
+
+    # Show or hide the return sequences checkbox based on the layer type
+    if value == 'LSTM':
+        layer_widgets[index]['return_seq'].grid()
+    else:
+        layer_widgets[index]['return_seq'].grid_remove()
+
+def update_layer_param(layer_widgets, event, index):
+    """
+    Update the layer parameter at a specific index.
+
+    Args:
+        layer_widgets (list): List of layer widgets.
+        event (Event): Key release event.
+        index (int): Index of the layer to update.
+    """
+    entry_widget = event.widget
+    current_text = entry_widget.get()  # This gets the current text from the entry
+    layer_widgets[index]['params'] = float(current_text)
+
+def update_layer_widgets(building_layers_frame, layer_widgets, update_layer_type, update_layer_param, num_layers):
+    """
+    Generates each layer widgets based on the number of layers.
+
+    Args:
+        building_layers_frame (CTkFrame): Frame to hold layer widgets.
+        layer_widgets (list): List to hold layer widget references.
+        update_layer_type (function): Function to update layer type.
+        update_layer_param (function): Function to update layer parameter.
+        num_layers (int): Number of layers to create.
+    """
+    
+    # Clear existing widgets
+    for widget in building_layers_frame.winfo_children():
+        widget.destroy()
+
+    layer_widgets.clear()
+    for i in range(num_layers):
+        layer_label = ctk.CTkLabel(building_layers_frame, text=f"Layer {i + 1}:")
+        layer_label.grid(row=i, column=0, padx=15, pady=15)
+        
+        layer_type_combo = ctk.CTkComboBox(building_layers_frame, values=["", "LSTM", "Dense", "Dropout"])
+        layer_type_combo.grid(row=i, column=1, padx=15, pady=15)
+
+        layer_param_entry = ctk.CTkEntry(building_layers_frame)
+        layer_param_entry.grid(row=i, column=2, padx=15, pady=15)
+
+        layer_return_seq_chk = ctk.CTkCheckBox(building_layers_frame, text="Return Sequences")
+        layer_return_seq_chk.grid(row=i, column=3, padx=15, pady=15)
+        layer_return_seq_chk.grid_remove()  # Hide initially
+        
+        layer_widgets.append({
+            'type': layer_type_combo, 
+            'params': layer_param_entry, 
+            'return_seq': layer_return_seq_chk
+        })
+
+        # Set callback to update the type in the list when changed
+        layer_type_combo.configure(command=lambda value, idx=i: update_layer_type(layer_widgets, value, idx))
+        layer_param_entry.bind('<KeyRelease>', lambda event, idx=i: update_layer_param(layer_widgets, event, idx))
+
+def build_model(layer_info, input_shape):
+    """
+    Build a Sequential model based on layer information and input shape.
+
+    Args:
+        layer_info (list): List of layer information dictionaries.
+        input_shape (tuple): Input shape of the model.
+
+    Returns:
+        Sequential: Constructed Keras Sequential model.
+    """
+
+    model = Sequential()
+    model.add(Input(shape=input_shape))
+    for info in layer_info:
+        layer_type = info['type']
+        if layer_type == 'LSTM':
+            model.add(LSTM(info['params'], return_sequences=info['return_sequences']))
+        elif layer_type == 'Dropout':
+            model.add(Dropout(info['params']))
+        elif layer_type == 'Dense':
+            model.add(Dense(info['params']))
+
+    return model
+
+def collect_model_details(layer_widgets, sequence_length_in_entry, model_name_entry, number_of_features_entry):
+    """
+    Collect model details and hyperparameters from the GUI inputs.
+
+    Args:
+        layer_widgets (list): List of layer widget references.
+        sequence_length_in_entry (CTkEntry): Entry widget for sequence length in.
+        model_name_entry (CTkEntry): Entry widget for model name.
+        number_of_features_entry (CTkEntry): Entry widget for number of features.
+
+    Returns:
+        tuple: (layer_details, hyperparameters)
+    """
+    
+    layer_details = []
+    for layer_info in layer_widgets:
+        layer_type = layer_info['type'].get()
+        if layer_type == "Dropout":
+            layer_params = float(layer_info['params'])
+        else:
+            layer_params = int(layer_info['params'])
+        return_seq = layer_info['return_seq'].get() if layer_type == 'LSTM' else False
+        layer_details.append({
+            'type': layer_type,
+            'params': layer_params,
+            'return_sequences': return_seq
+        })
+
+    hyperparameters = {
+        'sequence_length_in': sequence_length_in_entry.get(),
+        'sequence_length_out': 1,  # for predicting one value
+        'model_name': model_name_entry.get(),
+        'num_features': number_of_features_entry.get(),
+    }
+
+    return layer_details, hyperparameters
+
+def build_and_save_model(layer_widgets, sequence_length_in_entry, model_name_entry, number_of_features_entry, model_preview_frame, font):
+    """
+    Build and save the model based on collected details and hyperparameters.
+
+    Args:
+        layer_widgets (list): List of layer widget references.
+        sequence_length_in_entry (CTkEntry): Entry widget for sequence length in.
+        model_name_entry (CTkEntry): Entry widget for model name.
+        number_of_features_entry (CTkEntry): Entry widget for number of features.
+
+    Returns:
+        str: Path to the saved model file.
+    """
+    
+    layer_info, hyper_params = collect_model_details(layer_widgets, sequence_length_in_entry, model_name_entry, number_of_features_entry)
+    input_shape = (int(hyper_params['sequence_length_in']), int(hyper_params['num_features']))
+    model = build_model(layer_info, input_shape)
+    model.save('models/' + hyper_params['model_name'] + '.h5')
+
+    display_model_summary('models/' + hyper_params['model_name'] + '.h5', model_preview_frame, font)
