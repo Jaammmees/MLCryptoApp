@@ -12,16 +12,16 @@ from utils.sequence_processing import create_sequences
 
 def load_model_file(path_container, indicator):
     """
-    Opens a file dialog to select and load a model file (.h5), updating the GUI to reflect the loaded model.
+    Opens a file dialog to select and load a model file (.keras), updating the GUI to reflect the loaded model.
 
     Args:
     path_container (dict): Dictionary to store the path of the loaded model file.
     indicator (Widget): GUI widget (typically a label) to display the loaded model file name.
 
-    This function supports .h5 file formats for models.
+    This function supports .keras file formats for models.
     """
 
-    model_file_path = filedialog.askopenfilename(initialdir="./models", filetypes=[("HDF5 files", "*.h5")])
+    model_file_path = filedialog.askopenfilename(initialdir="./models", filetypes=[("HDF5 files", "*.keras")])
     if model_file_path:
         #print("Model loaded:", model_file_path)
         indicator.configure(text="Model " + os.path.basename(model_file_path) + " loaded")
@@ -42,7 +42,7 @@ def load_model_file_return_shapes(path_container, indicator, shape_indicator):
     This function also returns the model's input and output shapes for further use.
     """
 
-    model_file_path = filedialog.askopenfilename(initialdir="./models", filetypes=[("HDF5 files", "*.h5")])
+    model_file_path = filedialog.askopenfilename(initialdir="./models", filetypes=[("HDF5 files", "*.keras")])
     if model_file_path:
         indicator.configure(text="Model " + os.path.basename(model_file_path) + " loaded")
         path_container['model_path'] = model_file_path
@@ -66,7 +66,7 @@ def load_model_preview(path_container, model_indicator, model_preview_frame, dis
     This function updates the GUI with a preview of the model's structure.
     """
 
-    model_file_path = filedialog.askopenfilename(initialdir="./models", filetypes=[("HDF5 files", "*.h5")])
+    model_file_path = filedialog.askopenfilename(initialdir="./models", filetypes=[("HDF5 files", "*.keras")])
     if model_file_path:
         model_indicator.configure(text="Model " + os.path.basename(model_file_path) + " loaded")
         path_container['model_path'] = model_file_path
@@ -179,7 +179,7 @@ def start_training(path_container, validation_loss_label, sequence_in, sequence_
 
     ask_fileName = ctk.CTkInputDialog(text = "Name for Trained Model", title = "New Trained Model")
     if ask_fileName:
-        model.save(f'./models/{ask_fileName.get_input()}.h5')
+        model.save(f'./models/{ask_fileName.get_input()}.keras')
         progress_bar.grid_forget()
         progress_bar_label.grid_forget()
         saved_label.configure(text=f"Model Successfully Saved")
@@ -342,6 +342,6 @@ def build_and_save_model(layer_widgets, sequence_length_in_entry, model_name_ent
     layer_info, hyper_params = collect_model_details(layer_widgets, sequence_length_in_entry, model_name_entry, number_of_features_entry)
     input_shape = (int(hyper_params['sequence_length_in']), int(hyper_params['num_features']))
     model = build_model(layer_info, input_shape)
-    model.save('models/' + hyper_params['model_name'] + '.h5')
+    model.save('models/' + hyper_params['model_name'] + '.keras')
 
-    display_model_summary('models/' + hyper_params['model_name'] + '.h5', model_preview_frame, font)
+    display_model_summary('models/' + hyper_params['model_name'] + '.keras', model_preview_frame, font)

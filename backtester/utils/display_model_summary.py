@@ -1,7 +1,7 @@
 import io
 from contextlib import redirect_stdout
 import customtkinter as ctk
-from tensorflow.keras.models import load_model
+from keras.models import load_model
 
 def display_model_summary(model_path, display_frame, font):
     """

@@ -3,24 +3,18 @@ import customtkinter as ctk
 from tkinter import *
 from tkcalendar import DateEntry
 from PIL import Image
-from tensorflow.keras.models import Sequential, load_model # type: ignore
-from tensorflow.keras.layers import LSTM, Dropout, Dense, Input # type: ignore
 from utils.display_model_summary import display_model_summary
 from utils.data_handling import load_data_file, load_data_file_and_modify, process_and_save_data, load_data_file_and_preview
 from utils.model_management import load_model_file, load_model_preview, start_training, update_layer_param, update_layer_type, update_layer_widgets, build_and_save_model
 from utils.scaler_management import load_scaler_file, upload_scaler_prompt, load_columns_file
-from utils.sequence_processing import create_sequences
-from trading.historical import run_backtest, start_backtest
+from trading.historical import start_backtest
 from trading.real_time import fetch_data, fetch_current_minute_data, plot_data, extend_future_data
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import mplfinance as mpf
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import customtkinter as ctk
 import joblib
 import numpy as np
-import datetime
 
 import threading
 
@@ -158,7 +152,7 @@ class MainWindow(ctk.CTk):
         #need to be able to load a machine model, and a scalar, choose the data we want to backtest it on LOCALLY or just a TICKER that we can grab
         #the data has to be in the form INDEX == Timestep, Open, High, Low, Close, Volume as of now
         #buttons and text for loading model, scaler, and data
-        model_button = ctk.CTkButton(loader_frame, text="Load Model (.h5)", font=self.button_font, command=lambda : load_model_file(path_container, model_indicator))
+        model_button = ctk.CTkButton(loader_frame, text="Load Model (.keras)", font=self.button_font, command=lambda : load_model_file(path_container, model_indicator))
         model_indicator = ctk.CTkLabel(loader_frame, text="No Model Selected")
         scaler_button = ctk.CTkButton(loader_frame, text="Load Scaler (.pkl)", font=self.button_font, command=lambda : load_scaler_file(path_container, scaler_indicator))
         scaler_indicator = ctk.CTkLabel(loader_frame, text="No Scaler Model Selected")
@@ -395,7 +389,7 @@ class MainWindow(ctk.CTk):
         end_date_picker.pack(side=LEFT, padx=15, pady=15)
 
         # Button to load a model
-        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.h5)", font=self.button_font, command= lambda : load_model_preview(path_container, model_indicator, model_preview_frame, display_model_summary, self.button_font))
+        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.keras)", font=self.button_font, command= lambda : load_model_preview(path_container, model_indicator, model_preview_frame, display_model_summary, self.button_font))
         model_button.grid(row=0, column=0, padx=15, pady=15, ipadx=20)  # Fill the cell
 
         # Indicator label for model loading
@@ -479,7 +473,7 @@ class MainWindow(ctk.CTk):
             - Configure and apply sequence settings for the model.
             - Set training hyperparameters (like learning rate and epochs).
             - Initiate the training process.
-        3. Display dynamic feedback on the model and data status, and provide a preview area for generated sequences.
+        3. Display dynamic feedback on the model and data status
         """
 
         self.is_running = False  # stop the realtime process (very hacky i know)
@@ -511,7 +505,7 @@ class MainWindow(ctk.CTk):
         load_files_frame.grid_columnconfigure(1, weight=1)  # Set equal weight if needed
 
         # Button to load a model
-        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.h5)", font=self.button_font, command= lambda : (load_model_preview(path_container, model_indicator, model_preview_frame, display_model_summary, self.button_font), update_shapes()))
+        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.keras)", font=self.button_font, command= lambda : (load_model_preview(path_container, model_indicator, model_preview_frame, display_model_summary, self.button_font), update_shapes()))
         model_button.grid(row=0, column=0, padx=15, pady=15, ipadx=20)  # Fill the cell
 
         # Indicator label for model loading
@@ -602,13 +596,16 @@ class MainWindow(ctk.CTk):
         # Button to start model training
         train_model_button_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
         train_model_button_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+
         training_progressBar = ctk.CTkProgressBar(train_model_button_frame, orientation=HORIZONTAL, progress_color="#33cc33")
         training_progressBar.grid(row=0,column=1, padx=15,pady=15)
         training_progressBar.set(0)
         training_progressBar_label = ctk.CTkLabel(train_model_button_frame, text = "", font=self.button_font)
         training_progressBar_label.grid(row=0,column=2,padx=15,pady=15)
+        
         saved_model_label = ctk.CTkLabel(train_model_button_frame, text="", font=self.button_font)
         saved_model_label.grid(row=0,column=1, padx=15,pady=15)
+
         train_model_button = ctk.CTkButton(
         train_model_button_frame, text="Start Training", font=self.button_font, 
         command=lambda: threading.Thread(
@@ -618,6 +615,8 @@ class MainWindow(ctk.CTk):
         ).start()
     )
         train_model_button.grid(row=0,column=0,padx=15,pady=15)
+
+ #------------------------------------------------------------------------------------------------------------------------------------------------
 
     def stop_trading(self):
         self.is_running = False
@@ -774,7 +773,7 @@ class MainWindow(ctk.CTk):
         loader_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
         loader_frame.pack(pady=15, side=TOP, fill = X, padx = 20)
 
-        model_button = ctk.CTkButton(loader_frame, text="Load Model (.h5)", font=self.button_font, command=lambda : load_model_file(path_container, model_indicator))
+        model_button = ctk.CTkButton(loader_frame, text="Load Model (.keras)", font=self.button_font, command=lambda : load_model_file(path_container, model_indicator))
         model_indicator = ctk.CTkLabel(loader_frame, text="No Model Selected")
         scaler_button = ctk.CTkButton(loader_frame, text="Load Scaler (.pkl)", font=self.button_font, command=lambda : load_scaler_file(path_container, scaler_indicator))
         scaler_indicator = ctk.CTkLabel(loader_frame, text="No Scaler Model Selected")
@@ -843,6 +842,7 @@ class MainWindow(ctk.CTk):
         start_trading_button = ctk.CTkButton(config_frame, corner_radius=10, text = "Start Trading", command= lambda : self.initialise_trading(graph_inner_frame, self.selected_resolution, path_container, int(minutes_ahead_input.get())))
         start_trading_button.grid(row=1, column=0, padx=15, pady=15)
         
+ #------------------------------------------------------------------------------------------------------------------------------------------------
 
 
         
