@@ -810,10 +810,10 @@ class MainWindow(ctk.CTk):
             style='yahoo',
             volume=True,
             returnfig=True,
-            figscale=1.5,
+            figscale=1,
             figratio=(16, 9),
             title="Live Trading",
-            scale_padding={'left': 0.05, 'right': 0.9, 'top': 0.3, 'bottom': 0.7},
+            scale_padding={'left': 0.1, 'right': 0.70, 'top': 0.4, 'bottom': 0.7},
             panel_ratios=(5, 1)  # Ensure the ratio between the main chart and the volume chart is appropriate
         )
         self.canvas = FigureCanvasTkAgg(self.fig, master=frame)
@@ -890,11 +890,28 @@ class MainWindow(ctk.CTk):
         minutes_ahead_input = ctk.CTkEntry(config_frame, corner_radius=10)
         minutes_ahead_input.grid(row=0,column=8, padx=15, pady=15)
 
-        #graph frame
+        #chart & sidebar frame
         graph_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
         graph_frame.pack(pady=15,side=TOP,fill=X,padx=20)
         graph_inner_frame = ctk.CTkFrame(graph_frame, corner_radius=10)
-        graph_inner_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+        graph_inner_frame.grid(row=0, column=0, pady=15,padx=15, sticky="nsew")
+        graph_sidebar_frame = ctk.CTkFrame(graph_frame, corner_radius=10)
+        graph_sidebar_frame.grid(row=0, column=1, pady=15,padx=15, sticky="nsew")
+        graph_frame.grid_columnconfigure(0, weight=15)
+        graph_frame.grid_columnconfigure(1, weight=1)
+
+        graph_sidebar_details_frame = ctk.CTkFrame(graph_sidebar_frame, corner_radius=10)
+        graph_sidebar_details_frame.pack(pady=15, padx=15, fill=BOTH)
+
+        selected_crypto_label = ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Selected Crypto").pack(pady=15, padx=15)
+        current_time_label = ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Current Time").pack(pady=15, padx=15)
+        selected_resolution_label = ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Selected Resolution").pack(pady=15, padx=15)
+        most_recent_candlestick_label = ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Most Recent Candlestick").pack(pady=15, padx=15)
+        most_recent_prediction_label = ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Most Recent Prediction").pack(pady=15, padx=15)
+        starting_equity_label = ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Starting Equity").pack(pady=15, padx=15)
+        current_equity_label = ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Current Equity").pack(pady=15, padx=15)
+        return_so_far_label = ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Return So Far").pack(pady=15, padx=15)
+
 
         start_trading_button = ctk.CTkButton(config_frame, corner_radius=10, text = "Start Trading", command= lambda : self.initialise_trading(graph_inner_frame, self.selected_resolution, path_container, int(minutes_ahead_input.get())))
         start_trading_button.grid(row=1, column=0, padx=15, pady=15)
