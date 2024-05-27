@@ -9,14 +9,9 @@ from utils.data_handling import load_data_file, load_data_file_and_modify, proce
 from utils.model_management import load_model_file, load_model_preview, start_training, update_layer_param, update_layer_type, update_layer_widgets, build_and_save_model
 from utils.scaler_management import load_scaler_file, upload_scaler_prompt, load_columns_file
 from trading.historical import start_backtest
-from trading.real_time import fetch_data, fetch_current_minute_data, plot_data, extend_future_data
-import pandas as pd
-import mplfinance as mpf
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from trading.real_time import initialise_trading, stop_trading
 import customtkinter as ctk
-import joblib
-import numpy as np
-import matplotlib.pyplot as plt
+
 
 import threading
 
@@ -619,124 +614,6 @@ class MainWindow(ctk.CTk):
         train_model_button.grid(row=0,column=0,padx=15,pady=15)
 
  #------------------------------------------------------------------------------------------------------------------------------------------------
-    def stop_trading(self):
-        self.is_running = False
-
-    def prepare_data_for_prediction(self, df, sequence_length_in, minutes_ahead):
-        data = df.iloc[-(sequence_length_in + minutes_ahead):-minutes_ahead].copy()
-        data = data[self.scaler_columns]
-        data_scaled = self.scaler.transform(data)
-        data_scaled_df = pd.DataFrame(data_scaled, columns=self.scaler_columns)
-        X = data_scaled_df.values.reshape((1, sequence_length_in, len(self.scaler_columns)))
-        return X
-
-    def update_plot(self, minutes_ahead, selected_resolution, selected_crypto, labels):
-        if not self.is_running:
-            return
-
-        try:
-            # Fetch new data
-            new_data = fetch_current_minute_data(symbol=selected_crypto, interval=selected_resolution)
-            if new_data.empty:
-                print("No new data fetched.")
-            else:
-                last_actual_index = -minutes_ahead - 1
-                new_timestamp = new_data.index[0]
-                if new_timestamp > self.df_full.index[last_actual_index]:
-                    last_index = self.df_full.index[-1]
-                    next_index = last_index + pd.Timedelta(minutes=1)
-                    buffer_row = pd.DataFrame([[np.nan] * len(self.df_full.columns)], columns=self.df_full.columns, index=[next_index])
-                    self.df_full = pd.concat([self.df_full, buffer_row])
-                    self.df_full.loc[self.df_full.index[last_actual_index], ['Open', 'High', 'Low', 'Close', 'Volume']] = new_data.iloc[0]
-
-                prediction_time = self.df_full.index[-1]
-                prediction_price = None
-
-                # Check if a prediction is already made for this time
-                if np.isnan(self.df_full.loc[prediction_time, 'Prediction']):
-                    if self.model is not None and self.scaler is not None and self.scaler_columns is not None:
-                        # Get the model input shape
-                        _, sequence_length_in, num_features = self.model.input_shape
-                        
-                        # Prepare data for prediction
-                        X = self.prepare_data_for_prediction(self.df_full, sequence_length_in - minutes_ahead, minutes_ahead)
-                        if len(X) > 0:
-                            # Make prediction
-                            prediction = self.model.predict(X)
-                            inverse_transform_array = np.zeros((1, len(self.scaler_columns)))
-                            inverse_transform_array[0, 0] = prediction
-                            prediction_price = self.scaler.inverse_transform(inverse_transform_array)[0, 0]
-
-                """
-                Trading Strategy Implementation Section
-                ---------------------------------------
-                This is the section where you implement your trading strategy.
-                Based on the model's prediction, you can decide whether to buy, sell, or hold.
-                Example:
-                if prediction_price > current_price + threshold:
-                    execute_buy_order()
-                elif prediction_price < current_price - threshold:
-                    execute_sell_order()
-                else:
-                    hold_position()
-
-                Replace the following line with your trading logic.
-                """
-                # For testing: doesn't actually represent real prediction
-                prediction_price = self.df_full.iloc[-minutes_ahead - 1]['Close']
-
-                # Update plot with new data and prediction
-                plot_data(self.df_full, [self.ax1, self.ax2], self.canvas, prediction_time, prediction_price, minutes_ahead)
-
-                # Update UI labels
-                labels['current_time_label'].configure(text=f"Current Time: {pd.Timestamp.now().strftime('%H:%M:%S')}")
-                labels['selected_crypto_label'].configure(text=f"Selected Crypto: {selected_crypto}")
-                labels['selected_resolution_label'].configure(text=f"Selected Resolution: {selected_resolution}")
-
-                candlestick_data = self.df_full.iloc[last_actual_index]
-                candlestick_text = (
-                    f"Open: {candlestick_data['Open']}\n"
-                    f"High: {candlestick_data['High']}\n"
-                    f"Low: {candlestick_data['Low']}\n"
-                    f"Close: {candlestick_data['Close']}\n"
-                    f"Volume: {candlestick_data['Volume']}"
-                )
-                labels['most_recent_candlestick_label'].configure(text=f"Most Recent Candlestick:\n{candlestick_text}")
-
-                if prediction_price is not None:
-                    labels['most_recent_prediction_label'].configure(text=f"Most Recent Prediction: {prediction_price:.3f}")
-
-        except Exception as e:
-            print(f"Error in update_plot: {e}")
-
-        self.after(1000, lambda: self.update_plot(minutes_ahead, selected_resolution, selected_crypto, labels))
-
-    def initialise_trading(self, frame, selected_resolution, selected_crypto, path_container, minutes_ahead, labels):
-        # Load the model
-        self.model = load_model(path_container['model_path'])
-        # Load the scaler and columns
-        self.scaler = joblib.load(path_container['scaler_path'])
-        self.scaler_columns = joblib.load(path_container['columns_path'])
-
-        # Initialize the data and plot
-        self.is_running = True
-        self.df_full = fetch_data(symbol=selected_crypto, interval=selected_resolution)
-        self.df_full = extend_future_data(self.df_full, minutes_ahead)
-
-        self.fig, self.axes = mpf.plot(
-            self.df_full,
-            type='candle',
-            style='yahoo',
-            returnfig=True,
-            figscale=1,
-            figratio=(16, 9),
-            title="Live Trading",
-            scale_padding={'left': 0.1, 'right': 0.70, 'top': 0.4, 'bottom': 0.7},
-        )
-        self.canvas = FigureCanvasTkAgg(self.fig, master=frame)
-        self.canvas.get_tk_widget().pack(fill="both", expand=True)
-        self.update_plot(minutes_ahead, selected_resolution, selected_crypto, labels)
-
     def select_resolution(self, resolution):
         self.selected_resolution = resolution
         self.update_resolution_buttons()
@@ -749,7 +626,7 @@ class MainWindow(ctk.CTk):
                 button.configure(fg_color="#3a7ebf")
 
     def load_realtime(self):
-        self.is_running = False
+        self.is_running = stop_trading(self.is_running)
         for widget in self.main_frame.winfo_children():
             widget.destroy()
 
@@ -825,8 +702,13 @@ class MainWindow(ctk.CTk):
         for label in labels.values():
             label.pack(pady=15, padx=15)
 
-        start_trading_button = ctk.CTkButton(config_frame, corner_radius=10, text="Start Trading", command=lambda: self.initialise_trading(graph_inner_frame, self.selected_resolution, select_crypto_input.get(), path_container, int(minutes_ahead_input.get()), labels))
+        start_trading_button = ctk.CTkButton(config_frame, corner_radius=10, text="Start Trading", command=lambda: self.start_trading(graph_inner_frame, select_crypto_input.get(), int(minutes_ahead_input.get()), path_container, labels))
         start_trading_button.grid(row=1, column=0, padx=15, pady=15)
+
+    def start_trading(self, frame, selected_crypto, minutes_ahead, path_container, labels):
+        self.model, self.scaler, self.scaler_columns, self.df_full, self.fig, self.axes, self.canvas, self.is_running = initialise_trading(
+            frame, self.selected_resolution, selected_crypto, path_container, minutes_ahead, labels, self.is_running, self
+        )
         
  #------------------------------------------------------------------------------------------------------------------------------------------------
 
