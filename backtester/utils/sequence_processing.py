@@ -17,7 +17,6 @@ def create_sequences(data, sequence_length, prediction_steps, target_column='Clo
 
     This function processes the data to create overlapping sequences (windows) of length `sequence_length`, and corresponding targets that are `prediction_steps` away from the end of each sequence.
     """
-
     X, y = [], []
     data = data.dropna().reset_index(drop=True)  # Reset index after dropping NA values
     
@@ -26,10 +25,11 @@ def create_sequences(data, sequence_length, prediction_steps, target_column='Clo
         data = data[include_columns + [target_column]]
     else:
         data = data[[target_column]]
-        
-    for i in range(sequence_length, len(data) - prediction_steps + 1):
-        X.append(data.iloc[i-sequence_length:i].values)  # Adjust based on actual columns to include
-        y.append(data[target_column].pct_change(prediction_steps).iloc[i + prediction_steps - 1])
+
+    print(data.columns)
+    for i in range(len(data) - sequence_length - prediction_steps + 1):
+        X.append(data.iloc[i:i + sequence_length].values)
+        y.append(data[target_column].iloc[i + sequence_length + prediction_steps - 1])
         
     return np.array(X), np.array(y)
 

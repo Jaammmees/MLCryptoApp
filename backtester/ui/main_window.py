@@ -3,22 +3,15 @@ import customtkinter as ctk
 from tkinter import *
 from tkcalendar import DateEntry
 from PIL import Image
-from tensorflow.keras.models import Sequential, load_model # type: ignore
-from tensorflow.keras.layers import LSTM, Dropout, Dense, Input # type: ignore
+from keras.models import load_model
 from utils.display_model_summary import display_model_summary
 from utils.data_handling import load_data_file, load_data_file_and_modify, process_and_save_data, load_data_file_and_preview
-from utils.model_management import load_model_file, load_model_preview, start_training
+from utils.model_management import load_model_file, load_model_preview, start_training, update_layer_param, update_layer_type, update_layer_widgets, build_and_save_model
 from utils.scaler_management import load_scaler_file, upload_scaler_prompt, load_columns_file
-from trading.historical import run_backtest, start_backtest
-from trading.real_time import fetch_data, plot_data
-import datetime
-import requests
-import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-import mplfinance as mpf
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from trading.historical import start_backtest
+from trading.real_time import initialise_trading, stop_trading
 import customtkinter as ctk
+
 
 import threading
 
@@ -35,6 +28,9 @@ class MainWindow(ctk.CTk):
     """
 
     def __init__(self, *args, **kwargs):
+        """
+        Initialize the main application window and setup the UI components.
+        """
         super().__init__(*args, **kwargs)
 
         self.title('Machine Learning Backtester')
@@ -56,8 +52,7 @@ class MainWindow(ctk.CTk):
         self.button_font = ctk.CTkFont(family = "Helvetica", size = 15, weight = "bold")
         self.combo_box_font = ctk.CTkFont(family = "Helvetica", size = 20, weight = "bold")
 
-        self.WINDOW_SIZE = 60  # Number of candlesticks to display
-        self.current_index = self.WINDOW_SIZE
+        #specific to real-time trading and fetching, is a bool statement to stop or proceed.
         self.is_running = False
 
         self.setup_sidebar()
@@ -72,7 +67,7 @@ class MainWindow(ctk.CTk):
         This method loads images for buttons, creates button widgets, and configures their grid placement in the sidebar.
         """
 
-        #images
+        #Images for navigation buttons
         chart_image = Image.open("./images/line-chart-svgrepo-com.png")
         dollar_image = Image.open("./images/dollar-sign-svgrepo-com.png")
         train_image = Image.open("./images/settings-svgrepo-com.png")
@@ -84,21 +79,21 @@ class MainWindow(ctk.CTk):
         self.dataImage = ctk.CTkImage(dark_image = data_image, size=(50,50))
         self.buildImage = ctk.CTkImage(dark_image = build_image, size=(50,50))
         
-        #buttons
-        button_backtest = ctk.CTkButton(self.sidebar, text="Backtest", font=self.navbar_font, compound=BOTTOM, command=self.load_historical, image=self.backtestImage, width=60,height=60)
-        button_realtime = ctk.CTkButton(self.sidebar, text="Real-Time", font=self.navbar_font, compound=BOTTOM, command=self.load_realtime, image=self.realTimeImage, width=60,height=60)
-        button_build = ctk.CTkButton(self.sidebar, text="Build Model", font=self.navbar_font, compound=BOTTOM, command=self.load_build_model, image=self.buildImage, width=60,height=60)
-        button_data = ctk.CTkButton(self.sidebar, text="Process Data", font=self.navbar_font, compound=BOTTOM, command=self.load_process_data, image=self.dataImage, width=60,height=60)
-        button_training = ctk.CTkButton(self.sidebar, text="Train Model", font=self.navbar_font, compound=BOTTOM, command=self.load_train_model, image=self.trainImage, width=60,height=60)
-        
-        #grid positioning
-        button_backtest.grid(row=1, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
-        button_realtime.grid(row=2, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
-        button_build.grid(row=3, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
-        button_data.grid(row=4, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
-        button_training.grid(row=5, column = 0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
+        #Navigation Buttons
+        button_backtest = ctk.CTkButton(self.sidebar, text="Backtest", font=self.navbar_font, compound=BOTTOM, command=self.load_historical, image=self.backtestImage, width=60, height=60)
+        button_realtime = ctk.CTkButton(self.sidebar, text="Real-Time", font=self.navbar_font, compound=BOTTOM, command=self.load_realtime, image=self.realTimeImage, width=60, height=60)
+        button_build = ctk.CTkButton(self.sidebar, text="Build Model", font=self.navbar_font, compound=BOTTOM, command=self.load_build_model, image=self.buildImage, width=60, height=60)
+        button_data = ctk.CTkButton(self.sidebar, text="Process Data", font=self.navbar_font, compound=BOTTOM, command=self.load_process_data, image=self.dataImage, width=60, height=60)
+        button_training = ctk.CTkButton(self.sidebar, text="Train Model", font=self.navbar_font, compound=BOTTOM, command=self.load_train_model, image=self.trainImage, width=60, height=60)
 
-        #sidebar positioning
+        #Navigation Button positioning
+        button_backtest.grid(row=1, column=0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
+        button_realtime.grid(row=2, column=0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
+        button_build.grid(row=3, column=0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
+        button_data.grid(row=4, column=0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
+        button_training.grid(row=5, column=0, pady=20, padx=30, ipady=8, ipadx=8, sticky="nsew")
+
+        #sidebar weighting to make it centered with 5 buttons
         self.sidebar.grid_columnconfigure(0, weight=1)  # Make column 0 take up all available space
         self.sidebar.grid_rowconfigure(0, weight=1)  # Spacer row at the top
         self.sidebar.grid_rowconfigure(1, weight=0)  # Actual button row
@@ -154,7 +149,7 @@ class MainWindow(ctk.CTk):
         #need to be able to load a machine model, and a scalar, choose the data we want to backtest it on LOCALLY or just a TICKER that we can grab
         #the data has to be in the form INDEX == Timestep, Open, High, Low, Close, Volume as of now
         #buttons and text for loading model, scaler, and data
-        model_button = ctk.CTkButton(loader_frame, text="Load Model (.h5)", font=self.button_font, command=lambda : load_model_file(path_container, model_indicator))
+        model_button = ctk.CTkButton(loader_frame, text="Load Model (.keras)", font=self.button_font, command=lambda : load_model_file(path_container, model_indicator))
         model_indicator = ctk.CTkLabel(loader_frame, text="No Model Selected")
         scaler_button = ctk.CTkButton(loader_frame, text="Load Scaler (.pkl)", font=self.button_font, command=lambda : load_scaler_file(path_container, scaler_indicator))
         scaler_indicator = ctk.CTkLabel(loader_frame, text="No Scaler Model Selected")
@@ -163,7 +158,7 @@ class MainWindow(ctk.CTk):
         data_button = ctk.CTkButton(loader_frame, text="Load Data (Excel/Parquet)", font=self.button_font, command=lambda : load_data_file(path_container, data_indicator))
         data_indicator = ctk.CTkLabel(loader_frame, text="No Data Selected")
 
-        #pack buttons side by side
+        #button positioning
         model_button.grid(row=0, column = 0, padx=15, pady=15)
         model_indicator.grid(row = 1, column = 0, padx=15, pady=15)
         scaler_button.grid(row=0, column = 1, padx=15, pady=15)
@@ -204,144 +199,52 @@ class MainWindow(ctk.CTk):
         predictions_label = ctk.CTkLabel(backtest_button_frame, text="", font=self.button_font)
         predictions_label.grid(row=1, column=0, columnspan=3, padx=15, pady=15)
 
-
         #backtest results frame
         backtest_result_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
         backtest_result_frame.pack(pady=10, side=TOP, fill = BOTH, padx = 20)
 
     #------------------------------------------------------------------------------------------------------------------------------------------------
 
-        #in relation to building the model
-    def update_layer_type(self, value, index):
-        # Update the layer type at specific index
-        self.layer_widgets[index]['type'].set(value)
-
-        # Show or hide the return sequences checkbox based on the layer type
-        if value == 'LSTM':
-            self.layer_widgets[index]['return_seq'].grid()
-        else:
-            self.layer_widgets[index]['return_seq'].grid_remove()
-
-        #in relation to building the model
-    def update_layer_param(self, event, index):
-            entry_widget = event.widget
-            current_text = entry_widget.get()  # This gets the current text from the entry
-            #print(current_text)
-            self.layer_widgets[index]['params'] = float(current_text)
-            #print(self.layer_widgets)
-
     def load_build_model(self):
+        """
+        Loads the interface for building machine learning models (only LSTM atm) within the application.
 
-        self.is_running = False  # stop the realtime process (very hacky i know)
+        This method sets up the GUI components necessary for configuring and building models, including:
+        - Selecting the model type.
+        - Naming the model.
+        - Configuring the number of layers.
+        - Specifying parameters for each layer.
+        - Setting hyperparameters.
+        - Initiating the model build process and saving the model.
 
-        #wipe previous frame
+        Steps:
+        1. Clear existing widgets: Prepares the main frame for new content.
+        2. Display the title for the model building section.
+        3. Configure the frame and dropdown for model type selection.
+        4. Add entry fields for the model name.
+        5. Set up a slider for selecting the number of layers.
+        6. Create a frame for layer configuration and dynamically update it based on the slider value.
+        7. Configure the frame for hyperparameter inputs such as sequence length and number of features.
+        8. Add a button to initiate the model building process.
+        9. Set up a frame for displaying the model summary after building.
+        """
+        self.is_running = False  # stop the realtime process
+
+        # Wipe previous frame
         for widget in self.main_frame.winfo_children():
             widget.destroy()
 
-        #internal functions
-        #updates layers
-
-        def update_layer_widgets(self, num_layers):
-            # Clear existing widgets
-            for widget in self.building_layers_frame.winfo_children():
-                widget.destroy()
-
-            self.layer_widgets = []
-            for i in range(num_layers):
-                layer_label = ctk.CTkLabel(self.building_layers_frame, text=f"Layer {i + 1}:")
-                layer_label.grid(row=i, column=0, padx=15, pady=15)
-                
-                layer_type_combo = ctk.CTkComboBox(self.building_layers_frame, values=["", "LSTM", "Dense", "Dropout"])
-                layer_type_combo.grid(row=i, column=1, padx=15, pady=15)
-
-                layer_param_entry = ctk.CTkEntry(self.building_layers_frame)
-                layer_param_entry.grid(row=i, column=2, padx=15, pady=15)
-
-                layer_return_seq_chk = ctk.CTkCheckBox(self.building_layers_frame, text="Return Sequences")
-                layer_return_seq_chk.grid(row=i, column=3, padx=15, pady=15)
-                layer_return_seq_chk.grid_remove()  # Hide initially
-                
-                self.layer_widgets.append({
-                    'type': layer_type_combo, 
-                    'params': layer_param_entry, 
-                    'return_seq': layer_return_seq_chk
-                })
-
-                # Set callback to update the type in the list when changed
-                layer_type_combo.configure(command=lambda value, idx=i: self.update_layer_type(value, idx))
-                layer_param_entry.bind('<KeyRelease>', lambda event, idx=i: self.update_layer_param(event, idx))
-
-        #slider
-        def slider_value(value):
-            int_value = int(value)
-            select_layers_value.configure(text=f"{int_value}")
-            update_layer_widgets(self,int_value)
-
-        #build model
-        def build_model(layer_info, input_shape):
-            model = Sequential()
-            print(layer_info, input_shape)
-            model.add(Input(shape=input_shape))
-            for info in layer_info:
-                layer_type = info['type']
-                if layer_type == 'LSTM':
-                    model.add(LSTM(info['params'], return_sequences=info['return_sequences']))
-                elif layer_type == 'Dropout':
-                    model.add(Dropout(info['params']))
-                elif layer_type == 'Dense':
-                    model.add(Dense(info['params']))
-
-            return model
-        
-        def collect_model_details():
-            layer_details = []
-            #print(self.layer_widgets)
-            for layer_info in self.layer_widgets:
-                layer_type = layer_info['type'].get()
-                if layer_type == "Dropout":
-                    layer_params = float(layer_info['params'])
-                else:
-                    layer_params = int(layer_info['params'])
-                return_seq = layer_info['return_seq'].get() if layer_type == 'LSTM' else False
-                layer_details.append({
-                    'type': layer_type,
-                    'params': layer_params,
-                    'return_sequences': return_seq
-                })
-
-            hyperparameters = {
-                'sequence_length_in': sequence_length_in_entry.get(),
-                'sequence_length_out': sequence_length_out_entry.get(),
-                'model name' : model_name_entry.get(),
-            }
-
-            return layer_details, hyperparameters
-        
-        def build_and_save_model():
-            layer_info, hyper_params = collect_model_details()
-            # Assume input_shape is derived from 'sequence_length_in' and 'sequence_length_out'
-            input_shape = (int(hyper_params['sequence_length_in']), int(hyper_params['sequence_length_out']))
-            print(layer_info, hyper_params, input_shape)
-            model = build_model(layer_info, input_shape)
-            model.save('models/' + hyper_params['model name'] + '.h5')  # Save the model
-
-            model_path = 'models/' + hyper_params['model name'] + '.h5'
-            display_model_summary(model_path, self.model_preview_frame, self.button_font)
-
-        #title
+        # Title
         build_model_title = ctk.CTkLabel(self.main_frame, text="Build Model", font=self.title_font, text_color="#353535")
-        build_model_title.pack(pady=20,padx=25, side=TOP, anchor = "w")
+        build_model_title.pack(pady=20, padx=25, side=TOP, anchor="w")
 
-        #select model frame
-        select_model_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
-        select_model_frame.pack(pady=15, side=TOP, fill = X, padx = 20)
+        # Select model frame
+        select_model_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        select_model_frame.pack(pady=15, side=TOP, fill=X, padx=20)
 
-        # Model Type Selection: Dropdown to choose between different types of models (e.g., LSTM, CNN).
-        select_model_combo = ctk.CTkComboBox(select_model_frame, values = ["LSTM", "CNN", "RNN"], height = 50, width = 150, font=self.combo_box_font)
-        select_model_combo.grid(row=0,column=0, padx=15,pady=15, ipadx=30)
-        #choose how many layers wanted
-        select_layers_text = ctk.CTkLabel(select_model_frame, text="Model Layers")
-        select_layers_text.grid(row=0,column=3,padx=15,pady=15)
+        # Model Type Selection: Dropdown to choose between different types of models
+        select_model_combo = ctk.CTkComboBox(select_model_frame, values=["LSTM", "CNN", "RNN"], height=50, width=150, font=self.combo_box_font)
+        select_model_combo.grid(row=0, column=0, padx=15, pady=15, ipadx=30)
 
         # Model Name
         model_name_label = ctk.CTkLabel(select_model_frame, text="Model Name")
@@ -349,54 +252,77 @@ class MainWindow(ctk.CTk):
         model_name_entry = ctk.CTkEntry(select_model_frame)
         model_name_entry.grid(row=0, column=2, padx=15, pady=15)
 
-        #slider
-        select_layers = ctk.CTkSlider(select_model_frame, from_= 1, to = 10, number_of_steps=10, command=slider_value)
+        # Slider for number of layers
+        select_layers_text = ctk.CTkLabel(select_model_frame, text="Model Layers")
+        select_layers_text.grid(row=0, column=3, padx=15, pady=15)
+        select_layers = ctk.CTkSlider(select_model_frame, from_=1, to=10, number_of_steps=10, command=lambda value: self.slider_value(value, select_layers_value, self.building_layers_frame))
         select_layers.set(1)
-        select_layers.grid(row=0,column=4, padx=15,pady=15, ipadx=30)
+        select_layers.grid(row=0, column=4, padx=15, pady=15, ipadx=30)
         select_layers_value = ctk.CTkLabel(select_model_frame, text="1")
-        select_layers_value.grid(row=0,column=5,padx=15,pady=15)
+        select_layers_value.grid(row=0, column=5, padx=15, pady=15)
 
-        #choosing layers and their values
-        #building layers frame
-        self.building_layers_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
-        self.building_layers_frame.pack(pady=15, side=TOP, fill = X, padx = 20)
+        # Building layers frame
+        self.building_layers_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        self.building_layers_frame.pack(pady=15, side=TOP, fill=X, padx=20)
 
-        update_layer_widgets(self,1)
+        self.layer_widgets = []
+        update_layer_widgets(self.building_layers_frame, self.layer_widgets, update_layer_type, update_layer_param, 1)
 
-        # Hyperparameters:
-        parameters_title = ctk.CTkLabel(self.main_frame, text = "Hyperparameter Configuration & Model Preview", font = self.combo_box_font, text_color="#353535")
-        parameters_title.pack(padx=15,pady=15, side=TOP, anchor = "w")
+        # Hyperparameters and model preview
+        parameters_title = ctk.CTkLabel(self.main_frame, text="Hyperparameter Configuration & Model Preview", font=self.combo_box_font, text_color="#353535")
+        parameters_title.pack(padx=15, pady=15, side=TOP, anchor="w")
 
         side_by_side_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
         side_by_side_frame.pack(pady=20, side=TOP, fill=X, padx=20)
 
-        # Dropdowns for activation functions and optimizer choices.
-        select_parameters_frame = ctk.CTkFrame(side_by_side_frame, corner_radius= 10, fg_color='transparent', bg_color='transparent')
-        select_parameters_frame.pack(pady=15, side=LEFT, fill = X, padx = 20)
-        
+        # Hyperparameters frame
+        select_parameters_frame = ctk.CTkFrame(side_by_side_frame, corner_radius=10, fg_color='transparent', bg_color='transparent')
+        select_parameters_frame.pack(pady=15, side=LEFT, fill=X, padx=20)
+
         # Sequence Length In
         sequence_length_in_label = ctk.CTkLabel(select_parameters_frame, text="Sequence Length In:")
         sequence_length_in_label.grid(row=1, column=0, padx=15, pady=15)
         sequence_length_in_entry = ctk.CTkEntry(select_parameters_frame)
         sequence_length_in_entry.grid(row=1, column=1, padx=15, pady=15)
+
         # Sequence Length Out
         sequence_length_out_label = ctk.CTkLabel(select_parameters_frame, text="Sequence Length Out:")
         sequence_length_out_label.grid(row=2, column=0, padx=15, pady=15)
         sequence_length_out_entry = ctk.CTkEntry(select_parameters_frame)
         sequence_length_out_entry.grid(row=2, column=1, padx=15, pady=15)
 
-        # Submission: Button to confirm the setup and proceed to data preparation.
-        model_build_button_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
-        model_build_button_frame.pack(pady=20, side=TOP, fill = X, padx = 20)
+        # Number of Features
+        number_of_features_label = ctk.CTkLabel(select_parameters_frame, text="Number of Features:")
+        number_of_features_label.grid(row=3, column=0, padx=15, pady=15)
+        number_of_features_entry = ctk.CTkEntry(select_parameters_frame)
+        number_of_features_entry.grid(row=3, column=1, padx=15, pady=15)
 
-        #have a button that hits backtest, which calls the backtest function, which will return a html and we will embed that,
-        model_build_button = ctk.CTkButton(model_build_button_frame, text="Build Model", font=self.button_font, command=lambda: build_and_save_model())
+        # Model preview frame
+        model_preview_frame = ctk.CTkFrame(side_by_side_frame, corner_radius=10, fg_color='#333333')
+        model_preview_frame.pack(pady=20, side=RIGHT, fill=X, padx=20)
+        model_preview_frame.pack_forget()
+
+        # Build model button
+        model_build_button_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        model_build_button_frame.pack(pady=20, side=TOP, fill=X, padx=20)
+        model_build_button = ctk.CTkButton(model_build_button_frame, text="Build Model", font=self.button_font, command=lambda: build_and_save_model(self.layer_widgets, sequence_length_in_entry, model_name_entry, number_of_features_entry, model_preview_frame, self.button_font))
         model_build_button.grid(row=0, column=0, padx=15, pady=15)
 
-        #model preview
-        self.model_preview_frame = ctk.CTkFrame(side_by_side_frame, corner_radius= 10, fg_color='#333333')
-        self.model_preview_frame.pack(pady=20, side=RIGHT, fill = X, padx = 20)
-        self.model_preview_frame.pack_forget() 
+
+
+    def slider_value(self, value, select_layers_value, building_layers_frame):
+        """
+        Update the number of layers based on the slider value.
+
+        Args:
+            value (int): The number of layers selected.
+            select_layers_value (CTkLabel): Label to display the selected number of layers.
+            building_layers_frame (CTkFrame): Frame to hold the layer widgets.
+        """
+        int_value = int(value)
+        select_layers_value.configure(text=f"{int_value}")
+        update_layer_widgets(building_layers_frame, self.layer_widgets, update_layer_type, update_layer_param, int_value)
+
 
     #------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -460,7 +386,7 @@ class MainWindow(ctk.CTk):
         end_date_picker.pack(side=LEFT, padx=15, pady=15)
 
         # Button to load a model
-        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.h5)", font=self.button_font, command= lambda : load_model_preview(path_container, model_indicator, model_preview_frame, display_model_summary, self.button_font))
+        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.keras)", font=self.button_font, command= lambda : load_model_preview(path_container, model_indicator, model_preview_frame, display_model_summary, self.button_font))
         model_button.grid(row=0, column=0, padx=15, pady=15, ipadx=20)  # Fill the cell
 
         # Indicator label for model loading
@@ -544,7 +470,7 @@ class MainWindow(ctk.CTk):
             - Configure and apply sequence settings for the model.
             - Set training hyperparameters (like learning rate and epochs).
             - Initiate the training process.
-        3. Display dynamic feedback on the model and data status, and provide a preview area for generated sequences.
+        3. Display dynamic feedback on the model and data status
         """
 
         self.is_running = False  # stop the realtime process (very hacky i know)
@@ -567,6 +493,7 @@ class MainWindow(ctk.CTk):
                 print("yes")
                 self.model_input_shape = model.input_shape
                 self.model_output_shape = model.output_shape
+                print(self.model_input_shape, self.model_output_shape)
 
         #Data Upload:
         load_files_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
@@ -575,7 +502,7 @@ class MainWindow(ctk.CTk):
         load_files_frame.grid_columnconfigure(1, weight=1)  # Set equal weight if needed
 
         # Button to load a model
-        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.h5)", font=self.button_font, command= lambda : (load_model_preview(path_container, model_indicator, model_preview_frame, display_model_summary, self.button_font), update_shapes()))
+        model_button = ctk.CTkButton(load_files_frame, text="Load Model (.keras)", font=self.button_font, command= lambda : (load_model_preview(path_container, model_indicator, model_preview_frame, display_model_summary, self.button_font), update_shapes()))
         model_button.grid(row=0, column=0, padx=15, pady=15, ipadx=20)  # Fill the cell
 
         # Indicator label for model loading
@@ -666,42 +593,27 @@ class MainWindow(ctk.CTk):
         # Button to start model training
         train_model_button_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
         train_model_button_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+
         training_progressBar = ctk.CTkProgressBar(train_model_button_frame, orientation=HORIZONTAL, progress_color="#33cc33")
         training_progressBar.grid(row=0,column=1, padx=15,pady=15)
         training_progressBar.set(0)
         training_progressBar_label = ctk.CTkLabel(train_model_button_frame, text = "", font=self.button_font)
         training_progressBar_label.grid(row=0,column=2,padx=15,pady=15)
+        
         saved_model_label = ctk.CTkLabel(train_model_button_frame, text="", font=self.button_font)
         saved_model_label.grid(row=0,column=1, padx=15,pady=15)
+
         train_model_button = ctk.CTkButton(
         train_model_button_frame, text="Start Training", font=self.button_font, 
         command=lambda: threading.Thread(
             target=start_training,
-            args=(path_container, validation_loss_label, self.model_input_shape[1], self.model_output_shape[1], optimiser_entry.get(), loss_function_entry.get(), metric_function_entry.get(), learning_rate_entry.get(), epochs_entry.get(), saved_model_label, self, training_progressBar, training_progressBar_label),
+            args=(path_container, validation_loss_label, self.model_input_shape[1], self.model_input_shape[2], optimiser_entry.get(), loss_function_entry.get(), metric_function_entry.get(), learning_rate_entry.get(), epochs_entry.get(), saved_model_label, self, training_progressBar, training_progressBar_label),
             daemon=True  # Ensures the thread will exit when the main program does
         ).start()
     )
         train_model_button.grid(row=0,column=0,padx=15,pady=15)
 
-    def stop_trading(self):
-        self.is_running = False
-
-    def update_plot(self):
-        if not self.is_running:
-            return
-
-        self.current_index = plot_data(self.df_full, self.axes, self.canvas, self.WINDOW_SIZE, self.current_index)
-        self.after(1000, self.update_plot)  # Schedule next update after 1 second
-
-    def initialise_data_and_plot(self, frame, interval):
-        # Initialize the data and plot
-        self.is_running = True  # Start the updating process
-        self.df_full = fetch_data(interval=interval)  # Get data from the last 1.5 hours
-        self.fig, self.axes = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(10, 8))
-        self.canvas = FigureCanvasTkAgg(self.fig, master=frame)
-        self.canvas.get_tk_widget().pack(fill="both", expand=True)
-        self.update_plot()
-
+ #------------------------------------------------------------------------------------------------------------------------------------------------
     def select_resolution(self, resolution):
         self.selected_resolution = resolution
         self.update_resolution_buttons()
@@ -709,72 +621,96 @@ class MainWindow(ctk.CTk):
     def update_resolution_buttons(self):
         for res, button in self.resolution_buttons.items():
             if res == self.selected_resolution:
-                button.configure(fg_color="#45b057")  # Change color to indicate selection
+                button.configure(fg_color="#45b057")
             else:
-                button.configure(fg_color="#3a7ebf")  # Reset to default color
+                button.configure(fg_color="#3a7ebf")
 
     def load_realtime(self):
-        self.is_running = False  # stop the realtime process (very hacky i know)
-        #wipe previous frame
+        self.is_running = stop_trading(self.is_running)
         for widget in self.main_frame.winfo_children():
             widget.destroy()
 
         path_container = {}
 
-        #title
         realTime_title = ctk.CTkLabel(self.main_frame, text="Real-Time Trading", font=self.title_font, text_color="#353535")
-        realTime_title.pack(pady=20,padx=25, side=TOP, anchor = "w")
+        realTime_title.pack(pady=20, padx=25, side=TOP, anchor="w")
 
-        #loading frame
-        loader_frame = ctk.CTkFrame(self.main_frame, corner_radius= 10)
-        loader_frame.pack(pady=15, side=TOP, fill = X, padx = 20)
+        loader_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        loader_frame.pack(pady=15, side=TOP, fill=X, padx=20)
 
-        model_button = ctk.CTkButton(loader_frame, text="Load Model (.h5)", font=self.button_font, command=lambda : load_model_file(path_container, model_indicator))
+        model_button = ctk.CTkButton(loader_frame, text="Load Model (.keras)", font=self.button_font, command=lambda: load_model_file(path_container, model_indicator))
         model_indicator = ctk.CTkLabel(loader_frame, text="No Model Selected")
-        scaler_button = ctk.CTkButton(loader_frame, text="Load Scaler (.pkl)", font=self.button_font, command=lambda : load_scaler_file(path_container, scaler_indicator))
+        scaler_button = ctk.CTkButton(loader_frame, text="Load Scaler (.pkl)", font=self.button_font, command=lambda: load_scaler_file(path_container, scaler_indicator))
         scaler_indicator = ctk.CTkLabel(loader_frame, text="No Scaler Model Selected")
-        columns_button = ctk.CTkButton(loader_frame, text="Load Columns (.pkl)", font=self.button_font, command=lambda : load_columns_file(path_container, columns_indicator))
+        columns_button = ctk.CTkButton(loader_frame, text="Load Columns (.pkl)", font=self.button_font, command=lambda: load_columns_file(path_container, columns_indicator))
         columns_indicator = ctk.CTkLabel(loader_frame, text="No Columns File Selected")
 
-        #pack buttons side by side
-        model_button.grid(row=0, column = 0, padx=15, pady=15)
-        model_indicator.grid(row = 1, column = 0, padx=15, pady=15)
-        scaler_button.grid(row=0, column = 1, padx=15, pady=15)
-        scaler_indicator.grid(row = 1, column = 1, padx=15, pady=15)
-        columns_button.grid(row=0, column = 2, padx=15, pady=15)
-        columns_indicator.grid(row = 1, column = 2, padx=15, pady=15)
+        model_button.grid(row=0, column=0, padx=15, pady=15)
+        model_indicator.grid(row=1, column=0, padx=15, pady=15)
+        scaler_button.grid(row=0, column=1, padx=15, pady=15)
+        scaler_indicator.grid(row=1, column=1, padx=15, pady=15)
+        columns_button.grid(row=0, column=2, padx=15, pady=15)
+        columns_indicator.grid(row=1, column=2, padx=15, pady=15)
 
         self.selected_resolution = '1m'
 
-        #choose crypto and have a start trading button\
         config_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
-        config_frame.pack(pady=15,side=TOP,fill=X, padx= 20)
+        config_frame.pack(pady=15, side=TOP, fill=X, padx=20)
 
         select_crypto_label = ctk.CTkLabel(config_frame, text="Select Crypto", font=self.button_font)
-        select_crypto_label.grid(row=0,column=0, padx=15, pady=15)
+        select_crypto_label.grid(row=0, column=0, padx=15, pady=15)
         select_crypto_input = ctk.CTkEntry(config_frame, corner_radius=10)
-        select_crypto_input.grid(row=0,column=1, padx=15, pady=15)
+        select_crypto_input.grid(row=0, column=1, padx=15, pady=15)
 
-                # Resolution buttons
         resolutions = ['1m', '5m', '15m', '30m', '1h']
         self.resolution_buttons = {}
         for i, resolution in enumerate(resolutions):
-            button = ctk.CTkButton(config_frame, text=resolution, font=self.button_font,
-                                   command=lambda res=resolution: self.select_resolution(res), width=50)
-            button.grid(row=0, column=i+2, padx=5, pady=5)
+            button = ctk.CTkButton(config_frame, text=resolution, font=self.button_font, command=lambda res=resolution: self.select_resolution(res), width=50)
+            button.grid(row=0, column=i + 2, padx=5, pady=5)
             self.resolution_buttons[resolution] = button
 
         self.update_resolution_buttons()
 
-        #graph frame
-        graph_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
-        graph_frame.pack(pady=15,side=TOP,fill=X,padx=20)
-        graph_inner_frame = ctk.CTkFrame(graph_frame, corner_radius=10)
-        graph_inner_frame.pack(pady=15,side=TOP,fill=X,padx=20)
+        minutes_ahead_label = ctk.CTkLabel(config_frame, text="Minutes Ahead to Predict", font=self.button_font)
+        minutes_ahead_label.grid(row=0, column=7, padx=15, pady=15)
+        minutes_ahead_input = ctk.CTkEntry(config_frame, corner_radius=10)
+        minutes_ahead_input.grid(row=0, column=8, padx=15, pady=15)
 
-        start_trading_button = ctk.CTkButton(config_frame, corner_radius=10, text = "Start Trading", command= lambda : self.initialise_data_and_plot(graph_inner_frame, self.selected_resolution))
+        graph_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        graph_frame.pack(pady=15, side=TOP, fill=X, padx=20)
+        graph_inner_frame = ctk.CTkFrame(graph_frame, corner_radius=10)
+        graph_inner_frame.grid(row=0, column=0, pady=15, padx=15, sticky="nsew")
+        graph_sidebar_frame = ctk.CTkFrame(graph_frame, corner_radius=10)
+        graph_sidebar_frame.grid(row=0, column=1, pady=15, padx=15, sticky="nsew")
+        graph_frame.grid_columnconfigure(0, weight=15)
+        graph_frame.grid_columnconfigure(1, weight=1)
+
+        graph_sidebar_details_frame = ctk.CTkFrame(graph_sidebar_frame, corner_radius=10)
+        graph_sidebar_details_frame.pack(pady=15, padx=15, fill=BOTH)
+
+        labels = {
+            'selected_crypto_label': ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Selected Crypto"),
+            'current_time_label': ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Current Time"),
+            'selected_resolution_label': ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Selected Resolution"),
+            'most_recent_candlestick_label': ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Most Recent Candlestick"),
+            'most_recent_prediction_label': ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Most Recent Prediction"),
+            'starting_equity_label': ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Starting Equity: 100000"),
+            'current_equity_label': ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Current Equity: 100000"),
+            'return_so_far_label': ctk.CTkLabel(graph_sidebar_details_frame, font=self.button_font, text="Return So Far: 0")
+        }
+
+        for label in labels.values():
+            label.pack(pady=15, padx=15)
+
+        start_trading_button = ctk.CTkButton(config_frame, corner_radius=10, text="Start Trading", command=lambda: self.start_trading(graph_inner_frame, select_crypto_input.get(), int(minutes_ahead_input.get()), path_container, labels))
         start_trading_button.grid(row=1, column=0, padx=15, pady=15)
+
+    def start_trading(self, frame, selected_crypto, minutes_ahead, path_container, labels):
+        self.model, self.scaler, self.scaler_columns, self.df_full, self.fig, self.axes, self.canvas, self.is_running = initialise_trading(
+            frame, self.selected_resolution, selected_crypto, path_container, minutes_ahead, labels, self.is_running, self
+        )
         
+ #------------------------------------------------------------------------------------------------------------------------------------------------
 
 
         
