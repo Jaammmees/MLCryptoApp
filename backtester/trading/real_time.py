@@ -175,8 +175,7 @@ def update_plot(df_full, minutes_ahead, selected_resolution, selected_crypto, la
                 execute_sell_order()
             else:
                 hold_position()
-
-            Replace the following line with your trading logic.
+            
             """
             # For testing: doesn't actually represent real prediction
             prediction_price = df_full.iloc[-minutes_ahead - 1]['Close']
